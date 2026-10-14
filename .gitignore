@@ -18,3 +18,7 @@ go.work.sum
 # IDE
 .idea/
 .vscode/
+
+# Local secrets (Mattermost / Grok tokens in later issues)
+.env
+.env.*
