@@ -25,9 +25,9 @@ func TestRun(t *testing.T) {
 			wantStdout: "mattermost-grok-relay " + app.Version + "\n",
 		},
 		{
-			name:     "no args",
-			args:     []string{"mattermost-grok-relay"},
-			wantCode: 1,
+			name:       "no args",
+			args:       []string{"mattermost-grok-relay"},
+			wantCode:   1,
 			wantStderr: "relay logic is not implemented yet; use -version to print the build version\n",
 		},
 		{
@@ -37,9 +37,9 @@ func TestRun(t *testing.T) {
 			wantStderr: "flag provided but not defined: -unknown",
 		},
 		{
-			name:     "positional args",
-			args:     []string{"mattermost-grok-relay", "extra"},
-			wantCode: 1,
+			name:       "positional args",
+			args:       []string{"mattermost-grok-relay", "extra"},
+			wantCode:   1,
 			wantStderr: "unknown arguments:",
 		},
 	}
