@@ -1,3 +1,3 @@
 module github.com/takak2166/mattermost-grok-relay
 
-go 1.24.0
+go 1.26.0

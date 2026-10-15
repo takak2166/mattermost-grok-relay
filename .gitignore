@@ -22,3 +22,7 @@ go.work.sum
 # Local secrets (Mattermost / Grok tokens in later issues)
 .env
 .env.*
+.envrc
+*.pem
+*.key
+secrets/

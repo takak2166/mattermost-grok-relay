@@ -2,39 +2,62 @@ package main
 
 import (
 	"bytes"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/takak2166/mattermost-grok-relay/internal/app"
 )
 
-func TestMainVersionFlag(t *testing.T) {
+func TestRun(t *testing.T) {
 	t.Parallel()
 
-	repoRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name       string
+		args       []string
+		wantCode   int
+		wantStdout string
+		wantStderr string
+	}{
+		{
+			name:       "version flag",
+			args:       []string{"mattermost-grok-relay", "-version"},
+			wantCode:   0,
+			wantStdout: "mattermost-grok-relay " + app.Version + "\n",
+		},
+		{
+			name:     "no args",
+			args:     []string{"mattermost-grok-relay"},
+			wantCode: 1,
+			wantStderr: "relay logic is not implemented yet; use -version to print the build version\n",
+		},
+		{
+			name:       "unknown flag",
+			args:       []string{"mattermost-grok-relay", "-unknown"},
+			wantCode:   1,
+			wantStderr: "flag provided but not defined: -unknown",
+		},
+		{
+			name:     "positional args",
+			args:     []string{"mattermost-grok-relay", "extra"},
+			wantCode: 1,
+			wantStderr: "unknown arguments:",
+		},
 	}
 
-	binary := filepath.Join(t.TempDir(), "mattermost-grok-relay")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	build.Dir = filepath.Join(repoRoot, "cmd", "mattermost-grok-relay")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
-
-	cmd := exec.Command(binary, "-version")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("run binary: %v", err)
-	}
-
-	want := "mattermost-grok-relay " + app.Version + "\n"
-	if stdout.String() != want {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			code := run(tt.args, &stdout, &stderr)
+			if code != tt.wantCode {
+				t.Fatalf("exit code = %d, want %d", code, tt.wantCode)
+			}
+			if tt.wantStdout != "" && stdout.String() != tt.wantStdout {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), tt.wantStdout)
+			}
+			if tt.wantStderr != "" && !strings.Contains(stderr.String(), tt.wantStderr) {
+				t.Fatalf("stderr = %q, want substring %q", stderr.String(), tt.wantStderr)
+			}
+		})
 	}
 }
