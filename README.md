@@ -1,17 +1,19 @@
 # mattermost-grok-relay
 
-Mattermost と Grok Bot をつなぐ中継サービス（relay）の Go 実装リポジトリです。
+**Languages:** [English](README.md) | [日本語 (README.ja.md)](README.ja.md)
 
-本リポジトリは新規 Go プロジェクトとして一から構築します。ビジネスロジックは後続 Issue で追加します。
+Go implementation of a relay service between Mattermost and Grok Bot.
 
-## レイヤ方針（土台）
+This repository is a greenfield Go project. Business logic will land in follow-up work.
 
-- `cmd/` はエントリポイントのみ。ロジックは `internal/` に置く。
-- 依存の向きは `cmd → internal` のみ（`internal` 同士は必要最小限）。
-- ログは標準ライブラリの `log/slog` を使う方針（relay 本体実装時から適用）。
-- Mattermost / Grok など外部 API 向けの境界パッケージは、機能追加時に `internal/` 配下で切る。
+## Layering (scaffold)
 
-## 開発
+- `cmd/` holds entrypoints only; logic lives under `internal/`.
+- Dependencies flow `cmd → internal` only (minimal cross-`internal` coupling).
+- Logging will use the standard library `log/slog` once relay logic is implemented.
+- Boundary packages for external APIs (Mattermost, Grok, and similar) will be added under `internal/` as features arrive.
+
+## Development
 
 ```bash
 go test ./...
@@ -25,4 +27,4 @@ docker build -t mattermost-grok-relay:local .
 docker run --rm mattermost-grok-relay:local -version
 ```
 
-現状のイメージは **`-version` でバージョン表示して終了するだけ** です（常駐プロセスにはなりません）。relay の常時接続ロジックは後続で入れ、デフォルト CMD もそのとき更新します。
+The image **prints the version with `-version` and exits**; it is not a long-running process yet. Always-on WebSocket relay logic and the default container command will change when that work lands.
