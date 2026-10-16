@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.27-alpine AS builder
+FROM golang:1.27.2-alpine AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
