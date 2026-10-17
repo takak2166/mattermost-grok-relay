@@ -9,10 +9,10 @@ Operational values (registry hostname, passwords, private-network IP/DNS, robot 
 | Topic | Decision |
 | --- | --- |
 | Harbor project / repository | `${HARBOR_REGISTRY}/library/mattermost-grok-relay` (created on **first push**, not pre-provisioned) |
-| Harbor tags | **Immutable tags** enabled on this repository (Harbor UI configuration, out of band) |
+| Harbor tags | **Immutable tags** for this image (Harbor project rule on `library`, e.g. matching `mattermost-grok-relay`; configured out of band—may be set before or right after first push) |
 | Primary tag (production) | Git commit SHA on `main` (`github.sha`, full 40 characters) |
 | Harbor identity | **Existing cluster robot account** for both **push** (CI) and **pull** (cluster); credentials via `HARBOR_USERNAME` / `HARBOR_PASSWORD` secrets only |
-| CD runner | **Self-hosted** runner with a **dedicated label** (label name fixed in the CD implementation issue); repository stays **public** |
+| CD runner | **Self-hosted** runner with a **dedicated label** (exact label string fixed in the CD implementation issue); repository stays **public** |
 | CI push credentials | GitHub Actions **repository secrets** (see below) |
 | Cluster pull credentials | Namespace `mattermost-grok-relay`, Secret `harbor-registry-secret` (new SealedSecret in `my-k8s-platform`, not reused from other namespaces) |
 | Fleet tag updates | **Manual PR** in `my-k8s-platform` to bump the image tag to the new `main` SHA after push—**no** automatic Fleet pickup; automation is a later issue |
@@ -27,9 +27,9 @@ Operational values (registry hostname, passwords, private-network IP/DNS, robot 
 - **Repository:** `mattermost-grok-relay`
 - **Full image reference (logical):** `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<tag>`
 - **Repository lifecycle:** Do **not** create the Harbor repository ahead of time; the **first successful CI push** creates it (Harbor default behavior).
-- **Tag immutability:** Enable **immutable tags** on `library/mattermost-grok-relay` in Harbor so a tag cannot be overwritten with a different digest (configured in Harbor outside this repo).
+- **Tag immutability:** Enable **immutable tags** via a Harbor rule on project `library` that covers `mattermost-grok-relay` (project-scoped rules can be configured before the repository exists). A tag cannot be overwritten with a different digest. Harbor UI steps and hostnames are not documented in this repo.
 
-`HARBOR_REGISTRY` is the registry host (and optional port/path prefix) configured out-of-band—for example a GitHub Actions secret with the same name used in `my-k8s-platform`.
+`HARBOR_REGISTRY` is the registry host (and optional port/path prefix) configured out-of-band—for example a GitHub Actions secret using the same name as in `my-k8s-platform`.
 
 ### Alternatives considered
 
@@ -90,13 +90,13 @@ Harbor **push** runs in **this repository** (CD issue). Credentials are **not** 
 
 - **When push runs:** only on **`push` to `main`** (after merge). The Harbor push workflow **must not** run on `pull_request`.
 - **Runner:** **self-hosted** runner(s) that can reach the private Harbor registry (same class as other home infra workflows).
-- **Runner label:** jobs use a **dedicated label** reserved for this repo’s CD; the **exact label string** is defined in the **CD implementation issue** (not in this public doc).
+- **Runner label:** jobs use a **dedicated label** reserved for this repo’s CD; the **exact label string** is defined in the **CD implementation issue** (it will appear in the public workflow YAML when CD lands).
 - **Public repo safety:** enable **approval for fork PR workflows** (or equivalent) so untrusted forks cannot consume self-hosted runners or secrets.
 - **Pull request CI:** existing `ci.yml` continues to validate build/test on PRs without Harbor push.
 
 ### Adopted: secret / variable names
 
-Align with `my-k8s-platform` Harbor workflows where possible:
+Align with `my-k8s-platform` Harbor workflows where possible (e.g. `postgresql-image-sync.yml`):
 
 | Name | Storage | Purpose |
 | --- | --- | --- |
@@ -126,7 +126,7 @@ Optional **repository variable** (non-secret):
 | --- | --- | --- |
 | GitHub-hosted runners | Simple setup | Often cannot reach a private home registry |
 | Push on every PR | Early integration | Leaks build load; fork approval still needed on public repo |
-| **Self-hosted + main-only push (adopted)** | Reliable registry access; minimal secret exposure on PRs | Runner ops and label discipline required |
+| **Self-hosted + main-only push (adopted)** | Reliable registry access; minimal secret exposure on PRs | Runner ops and label discipline required; CD workflow will expose the label in public `runs-on:` |
 | OIDC to Harbor | No long-lived password in GitHub | Not documented in existing repos yet |
 
 ---
@@ -171,7 +171,7 @@ Node-level **containerd** auth via `registries.yaml` (Terraform template in `my-
 
 | Option | Pros | Cons |
 | --- | --- | --- |
-| Auto-update on every `main` push (bot PR) | Faster rollout | Deferred by decision; needs guards and review |
+| Auto-update on every `main` push (bot PR) | Faster rollout | Deferred by decision; needs guards, review, and follow-up automation design |
 | `fleet-comparepatch-suggest` only | Reconciles cluster drift | Does not detect “new image in Harbor” |
 | **Manual tag-bump PR (adopted)** | Clear audit trail; matches GitOps | Extra step after each CD push until automation exists |
 

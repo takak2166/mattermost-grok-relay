@@ -9,9 +9,9 @@
 | 項目 | 決定内容 |
 | --- | --- |
 | Harbor プロジェクト / リポジトリ | `${HARBOR_REGISTRY}/library/mattermost-grok-relay`（**初回 push で作成**、事前作成しない） |
-| Harbor タグ | 当該リポジトリで **immutable tag** を有効（Harbor UI で設定、リポ外） |
+| Harbor タグ | イメージ向け **immutable tag**（Harbor プロジェクト `library` のルールで `mattermost-grok-relay` を対象。リポ外設定。初回 push 前後どちらでも可） |
 | 本番で pin するタグ | `main` の Git コミット SHA（`github.sha`、40 文字） |
-| Harbor  identity | **既存のクラスタ用 robot アカウント**を **push（CI）と pull（クラスタ）の両方**に使用。資格情報は `HARBOR_USERNAME` / `HARBOR_PASSWORD` の Secret のみ |
+| Harbor 認証 | **既存のクラスタ用 robot アカウント**を **push（CI）と pull（クラスタ）の両方**に使用。資格情報は `HARBOR_USERNAME` / `HARBOR_PASSWORD` の Secret のみ |
 | CD runner | **self-hosted**。専用**ラベル**付き（ラベル名は **CD 実装 Issue** で確定）。リポジトリは **public** のまま |
 | CI の push 資格情報 | GitHub Actions **リポジトリ secrets**（下表） |
 | クラスタの pull 資格情報 | Namespace `mattermost-grok-relay`、Secret `harbor-registry-secret`（`my-k8s-platform` に **新規** SealedSecret。他 Namespace から流用不可） |
@@ -27,9 +27,9 @@
 - **リポジトリ:** `mattermost-grok-relay`
 - **イメージ参照（論理）:** `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<tag>`
 - **リポジトリ作成:** Harbor 上で**事前作成しない**。**初回の CI push 成功時**に作成される前提。
-- **タグ immutability:** `library/mattermost-grok-relay` で **immutable tag** を有効にする（Harbor 側設定。本リポには手順の実値を書かない）。
+- **タグ immutability:** Harbor プロジェクト `library` 上のルールで `mattermost-grok-relay` を対象に **immutable tag** を有効にする（リポジトリ未作成でもプロジェクトルールは設定可能）。同一タグの digest 上書きは不可。Harbor UI の手順やホスト名は本リポに書かない。
 
-`HARBOR_REGISTRY` は GitHub Actions の secret 等で外側から渡すレジストリホスト名です（`my-k8s-platform` の Harbor 連携と同じ名前を推奨）。
+`HARBOR_REGISTRY` は GitHub Actions の secret 等で外側から渡すレジストリホスト名（任意で port/path プレフィックスを含む）です。`my-k8s-platform` と同じ secret 名を使います。
 
 ### 検討した他案
 
@@ -38,7 +38,7 @@
 | Harbor プロジェクト `mattermost-grok-relay` を新設 | アプリ単位の RBAC | 運用コスト増。既存 self-build は `library/…` |
 | Docker Hub / GHCR | 設定が簡単 | 私有 Harbor 前提と不一致。外向き egress と資格情報管理が増える |
 | 事前に Harbor リポジトリを作る | 明示的 | 手作業が増える。初回 push で足りる |
-| **`library/mattermost-grok-relay`（採用）** | PostgreSQL 系 self-host と同型 | `library` 共有 |
+| **`library/mattermost-grok-relay`（採用）** | `my-k8s-platform` の Bitnami PostgreSQL ミラー等と同型（`library/…`） | `library` 共有 |
 
 ---
 
@@ -55,7 +55,7 @@
 | 案 | メリット | デメリット |
 | --- | --- | --- |
 | CI 専用 push robot | push 権限を最小化 | ローテーションと Harbor 設定が増える |
-| **既存クラスタ robot を流用（採用）** | 身份が一つ。ノード設定・pull secret と整合 | push 権限の付与が必要 |
+| **既存クラスタ robot を流用（採用）** | 身分が一つ。ノード設定・pull secret と整合 | push 権限の付与が必要 |
 
 ---
 
@@ -90,7 +90,7 @@ Harbor **push** は**このリポ**で行う（CD Issue）。資格情報は Git
 
 - **push workflow が動く条件:** **`main` への `push` のみ**（マージ後）。**`pull_request` では動かさない**。
 - **runner:** 私有 Harbor に到達できる **self-hosted** runner（自宅インフラの他 workflow と同種）。
-- **ラベル:** 本リポ CD 専用の **runner ラベル**を付ける。**ラベル文字列は CD 実装 Issue で決める**（公開 doc には具体名を書かない）。
+- **ラベル:** 本リポ CD 専用の **runner ラベル**を付ける。**ラベル文字列は CD 実装 Issue で決める**（CD workflow の公開 YAML の `runs-on:` に現れる）。
 - **public リポの安全策:** **fork 由来 workflow は承認制**（または同等）とし、信頼できない fork が self-hosted runner や secrets を使えないようにする。
 - **PR CI:** 既存 `ci.yml` で build/test のみ（Harbor push なし）。
 
@@ -126,7 +126,7 @@ Harbor **push** は**このリポ**で行う（CD Issue）。資格情報は Git
 | --- | --- | --- |
 | GitHub-hosted runner | セットアップが簡単 | 私有レジストリに届かないことが多い |
 | PR でも push | 早期検証 | 負荷と fork リスク |
-| **self-hosted + main のみ push（採用）** | 到達性と secrets 露出のバランス | runner 運用が必要 |
+| **self-hosted + main のみ push（採用）** | 到達性と secrets 露出のバランス | runner 運用が必要。CD 実装後はラベルが公開 YAML に載る |
 | Harbor OIDC | 長期パスワード不要 | 既存 repos に未整備 |
 
 ---
@@ -150,7 +150,7 @@ Harbor **push** は**このリポ**で行う（CD Issue）。資格情報は Git
 | 案 | メリット | デメリット |
 | --- | --- | --- |
 | `mattermost` Namespace に同居 | Namespace が少ない | ライフサイクルが結合 |
-| 他 Namespace の SealedSecret をコピー | 早い | **strict では無効**（暗号文が Namespace 绑定） |
+| 他 Namespace の SealedSecret をコピー | 早い | **strict では無効**（暗号文が Namespace に紐付け） |
 | **専用 Namespace + 新規 SealedSecret（採用）** | 分離と Sealed Secrets の正しい使い方 | Fleet Issue で seal 作業が必要 |
 
 ---
@@ -171,7 +171,7 @@ Harbor **push** は**このリポ**で行う（CD Issue）。資格情報は Git
 
 | 案 | メリット | デメリット |
 | --- | --- | --- |
-| `main` 毎の bot PR | 反映が速い | 今回の判断では後回し |
+| `main` 毎の bot PR | 反映が速い | 今回の判断では後回し。ガード・レビュー・自動化設計が必要 |
 | `fleet-comparepatch-suggest` のみ | drift 補正 | Harbor 新タグ検知には使わない |
 | **手動 tag bump PR（採用）** | 監査可能・GitOps と一致 | CD のあと手作業（自動化前） |
 
