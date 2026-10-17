@@ -2,17 +2,20 @@
 
 **mattermost-grok-relay** のコンテナイメージを私有 Harbor レジストリに公開し、Kubernetes（Rancher Fleet）から pull するための方針です。後続の **CD**（`main` マージ時の push）と **Fleet**（`my-k8s-platform` の配置）Issue から参照してください。
 
-レジストリのホスト名・パスワード・私有ネットワークの IP/DNS などの**実値はこの公開リポに書きません**。Secret 名・変数名・論理リソース名のみを記載します。
+レジストリのホスト名・パスワード・私有ネットワークの IP/DNS・robot アカウント名などの**実値はこの公開リポに書きません**。Secret 名・変数名・論理リソース名のみを記載します。
 
 ## 一覧
 
 | 項目 | 決定内容 |
 | --- | --- |
-| Harbor プロジェクト / リポジトリ | `${HARBOR_REGISTRY}/library/mattermost-grok-relay` |
-| 本番で pin するタグ | Git コミット SHA（`github.sha`、40 文字） |
+| Harbor プロジェクト / リポジトリ | `${HARBOR_REGISTRY}/library/mattermost-grok-relay`（**初回 push で作成**、事前作成しない） |
+| Harbor タグ | 当該リポジトリで **immutable tag** を有効（Harbor UI で設定、リポ外） |
+| 本番で pin するタグ | `main` の Git コミット SHA（`github.sha`、40 文字） |
+| Harbor  identity | **既存のクラスタ用 robot アカウント**を **push（CI）と pull（クラスタ）の両方**に使用。資格情報は `HARBOR_USERNAME` / `HARBOR_PASSWORD` の Secret のみ |
+| CD runner | **self-hosted**。専用**ラベル**付き（ラベル名は **CD 実装 Issue** で確定）。リポジトリは **public** のまま |
 | CI の push 資格情報 | GitHub Actions **リポジトリ secrets**（下表） |
-| クラスタの pull 資格情報 | `imagePullSecrets` → Secret 名 `harbor-registry-secret`（`my-k8s-platform` で SealedSecret 管理） |
-| Fleet の新タグ取り込み | **GitOps**: `my-k8s-platform` の `fleet.yaml` 等でタグを PR 更新（Harbor だけでは自動デプロイしない） |
+| クラスタの pull 資格情報 | Namespace `mattermost-grok-relay`、Secret `harbor-registry-secret`（`my-k8s-platform` に **新規** SealedSecret。他 Namespace から流用不可） |
+| Fleet の新タグ取り込み | push 後 **`my-k8s-platform` で手動 PR** によりイメージタグを `main` の SHA に更新。**自動取り込みは使わない**。自動化は後続 Issue |
 
 ---
 
@@ -23,6 +26,8 @@
 - **プロジェクト:** `library`
 - **リポジトリ:** `mattermost-grok-relay`
 - **イメージ参照（論理）:** `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<tag>`
+- **リポジトリ作成:** Harbor 上で**事前作成しない**。**初回の CI push 成功時**に作成される前提。
+- **タグ immutability:** `library/mattermost-grok-relay` で **immutable tag** を有効にする（Harbor 側設定。本リポには手順の実値を書かない）。
 
 `HARBOR_REGISTRY` は GitHub Actions の secret 等で外側から渡すレジストリホスト名です（`my-k8s-platform` の Harbor 連携と同じ名前を推奨）。
 
@@ -30,15 +35,27 @@
 
 | 案 | メリット | デメリット |
 | --- | --- | --- |
-| Harbor プロジェクト `mattermost-grok-relay` を新設 | アプリ単位の RBAC | 運用コスト増。既存のセルフビルドイメージは `library/…` 配下 |
-| Docker Hub / GHCR | 設定が簡単 | 私有 Harbor 公開の前提と不一致。外向き egress と資格情報管理が増える |
-| **`library/mattermost-grok-relay`（採用）** | `my-k8s-platform` の PostgreSQL 系 self-host イメージと同型 | `library` 共有のため RBAC は robot 単位で切る |
+| Harbor プロジェクト `mattermost-grok-relay` を新設 | アプリ単位の RBAC | 運用コスト増。既存 self-build は `library/…` |
+| Docker Hub / GHCR | 設定が簡単 | 私有 Harbor 前提と不一致。外向き egress と資格情報管理が増える |
+| 事前に Harbor リポジトリを作る | 明示的 | 手作業が増える。初回 push で足りる |
+| **`library/mattermost-grok-relay`（採用）** | PostgreSQL 系 self-host と同型 | `library` 共有 |
 
-### 要確認
+---
 
-- Harbor **robot アカウント**: CI **push** 用とクラスタ/ノード **pull** 用（同一か別の `robot$…` か）、既存 org 共通 robot の流用可否。
-- 初回 push 前に Harbor 側でリポジトリ作成が必要か（Harbor 設定依存）。
-- `library/mattermost-grok-relay` で **immutable tag**（または同等）を有効にし、同一 SHA タグの再 push で digest が silently 変わらないようにする。
+## Harbor robot アカウント（push / pull）
+
+### 採用案
+
+- **新規 robot は作らない**。**既存のクラスタ用 robot アカウント**（Harbor pull に既に使っているもの）を CI の **push** にも使う。
+- 資格情報は GitHub Actions の **`HARBOR_USERNAME`** / **`HARBOR_PASSWORD`** で渡す（robot 名・トークンの実値は公開リポに書かない）。
+- Harbor RBAC で、当該 robot に `library/mattermost-grok-relay` への **push** 権限があることを確認する。
+
+### 検討した他案
+
+| 案 | メリット | デメリット |
+| --- | --- | --- |
+| CI 専用 push robot | push 権限を最小化 | ローテーションと Harbor 設定が増える |
+| **既存クラスタ robot を流用（採用）** | 身份が一つ。ノード設定・pull secret と整合 | push 権限の付与が必要 |
 
 ---
 
@@ -47,8 +64,8 @@
 ### 採用案
 
 1. **本番 / Fleet で pin するタグ:** `main` でビルドしたコミットの **フル SHA**（`${{ github.sha }}`）。
-2. **PR 時:** Harbor には push せず、CI で build/test のみ（CD 実装までは現行 `ci.yml` と同様）。
-3. **semver（任意・将来）:** Git タグ `v*.*.*` をリリースしたとき、`:vX.Y.Z` も同一 digest に付与可能（人が読みやすいロールバックメモ用）。Fleet が参照するのは引き続き **SHA** を推奨。
+2. **PR 時:** Harbor には push しない（`pull_request` では push workflow を動かさない。検証は現行 `ci.yml` の build/test）。
+3. **semver（任意・将来）:** Git タグ `v*.*.*` をリリースしたとき、`:vX.Y.Z` も同一 digest に付与可能（人が読みやすいロールバックメモ用）。Fleet が参照するのは引き続き **SHA**。
 4. **Fleet では使わない:** `latest` や `main` だけに依存する運用。
 
 ### 検討した他案
@@ -59,15 +76,23 @@
 | CalVer | 見やすい | Git との 1:1 が弱い |
 | **フル SHA（採用）** | 不変・トレース容易 | マニフェストが長い |
 
-### ビルド時バージョン
+### ビルド時バージョン（後続 Issue）
 
-Dockerfile は `-ldflags` 内で `${VERSION}` を参照しますが、現状 `ARG VERSION` がありません。CD 実装時に `ARG VERSION` を追加し、`--build-arg VERSION=…` が無視されないようにします。値はイメージタグ（SHA または semver）と揃えます。
+Dockerfile への **`ARG VERSION`** 追加と、CD の `--build-arg VERSION=${{ github.sha }}` 連携は**本 Issue の範囲外**で**後続 Issue**で行う。それまでは Dockerfile 現状のまま build し、バイナリ `-version` は `0.0.0-dev` のままになり得る。
 
 ---
 
-## CI: Harbor への push 資格情報
+## CI: 資格情報・runner・push（GitHub Actions）
 
-CD は**このリポ**の `main` 向けに実装予定（別 Issue）。資格情報は Git に置きません。
+Harbor **push** は**このリポ**で行う（CD Issue）。資格情報は Git に置きません。
+
+### 採用案: トリガーと runner
+
+- **push workflow が動く条件:** **`main` への `push` のみ**（マージ後）。**`pull_request` では動かさない**。
+- **runner:** 私有 Harbor に到達できる **self-hosted** runner（自宅インフラの他 workflow と同種）。
+- **ラベル:** 本リポ CD 専用の **runner ラベル**を付ける。**ラベル文字列は CD 実装 Issue で決める**（公開 doc には具体名を書かない）。
+- **public リポの安全策:** **fork 由来 workflow は承認制**（または同等）とし、信頼できない fork が self-hosted runner や secrets を使えないようにする。
+- **PR CI:** 既存 `ci.yml` で build/test のみ（Harbor push なし）。
 
 ### 採用する Secret / Variable 名
 
@@ -76,9 +101,9 @@ CD は**このリポ**の `main` 向けに実装予定（別 Issue）。資格�
 | 名前 | 置き場所 | 用途 |
 | --- | --- | --- |
 | `HARBOR_REGISTRY` | Actions secret（またはホストのみなら variable） | `docker login` とイメージ名の prefix |
-| `HARBOR_USERNAME` | Actions secret | `library/mattermost-grok-relay` への **push** 権限を持つ robot / ユーザー |
-| `HARBOR_PASSWORD` | Actions secret | 上記のトークン |
-| `HARBOR_INSECURE_SKIP_VERIFY` | Actions variable（任意） | 私有 CA / 自己署名 TLS 時の意図を記録（`my-k8s-infra` の Terraform 変数 `harbor_insecure_skip_verify` と同趣旨）。CD 側で runner/docker/buildkit の TLS 設定に反映する必要があり、変数だけでは検証はスキップされない |
+| `HARBOR_USERNAME` | Actions secret | **既存クラスタ用 robot** のユーザー名（push + pull） |
+| `HARBOR_PASSWORD` | Actions secret | 上記 robot のトークン |
+| `HARBOR_INSECURE_SKIP_VERIFY` | Actions variable（任意） | 私有 CA / 自己署名 TLS 時の意図を記録（`my-k8s-infra` の Terraform 変数 `harbor_insecure_skip_verify` と同趣旨）。CD で runner/docker/buildkit の TLS 設定に反映する必要があり、変数だけでは検証はスキップされない |
 
 任意の **repository variable**:
 
@@ -88,52 +113,45 @@ CD は**このリポ**の `main` 向けに実装予定（別 Issue）。資格�
 
 ### push 手順（CD の想定）
 
-1. `${{ github.sha }}` を checkout。
-2. 上記 secret で `docker login`。
-3. `--build-arg VERSION=${{ github.sha }}` で build。
-4. `${HARBOR_REGISTRY}/library/mattermost-grok-relay:${{ github.sha }}` で tag。
-5. そのタグのみを push する（無関係な既存タグは上書きしない）。
+1. トリガー: **self-hosted**（CD ラベル付き）で **`main` への push**。
+2. `${{ github.sha }}` を checkout。
+3. 上記 secret で `docker login`。
+4. `docker build`（Dockerfile `ARG VERSION` 対応までは build-arg なし）。
+5. `${HARBOR_REGISTRY}/library/mattermost-grok-relay:${{ github.sha }}` で tag。
+6. そのタグのみ push（Harbor の immutable tag により同一タグの上書きは不可）。
 
 ### 検討した他案
 
 | 案 | メリット | デメリット |
 | --- | --- | --- |
-| Org secrets のみ | ローテーションが一箇所 | 公開リポの可視性・継承が不明確 |
+| GitHub-hosted runner | セットアップが簡単 | 私有レジストリに届かないことが多い |
+| PR でも push | 早期検証 | 負荷と fork リスク |
+| **self-hosted + main のみ push（採用）** | 到達性と secrets 露出のバランス | runner 運用が必要 |
 | Harbor OIDC | 長期パスワード不要 | 既存 repos に未整備 |
-| **リポ secrets + 共通名（採用）** | 他リポと名前が一致 | robot の push 権限設定が必要 |
-
-### 要確認
-
-- push 用 robot アカウント名と Harbor ロール。
-- CI runner が **GitHub-hosted** か **self-hosted** か（私有レジストリへの到達性に影響）。
 
 ---
 
-## Kubernetes: pull 資格情報
+## Kubernetes: Namespace と pull 資格情報
 
 マニフェストは **`my-k8s-platform`** 側（アプリコードは本リポ、Fleet overlay は `my-k8s-platform`）。
 
 ### 採用案
 
+- **Namespace:** 専用 **`mattermost-grok-relay`**（Mattermost 本体と同じ Namespace には置かない）。
 - **Secret 名:** `harbor-registry-secret`（`kubernetes.io/dockerconfigjson`）。
 - **Pod:** `imagePullSecrets: [{ name: harbor-registry-secret }]`。
-- **Git:** overlay 配下の **SealedSecret**（`apps/postgresql/overlays/dev/harbor-registry-secret-sealed.yaml` と同型）。
-- **中身:** レジストリ pull 用 robot のユーザー/パスワード（実値は SealedSecret 生成時のみ。公開リポには載せない）。
+- **Git 上の置き場所:** `my-k8s-platform` の **`apps/mattermost-grok-relay/overlays/dev/`** に **新規 SealedSecret**。
+- **SealedSecret:** Sealed Secrets は **Namespace 固定（strict）** のため、PostgreSQL 等の **SealedSecret ファイルは流用できない**。Namespace `mattermost-grok-relay` 向けに **`harbor-registry-secret` を作り直す**（中身は**既存クラスタ用 robot** と同じ資格情報を seal 時に使う。実値は公開リポに載せない）。
 
-`my-k8s-infra` の `registries.yaml`（ノード containerd 設定）は pull を補助し得ますが、Fleet 管理ワークロードでは **imagePullSecrets を明示**する方針とします。
+`my-k8s-infra` の `registries.yaml`（ノード containerd）は pull を補助し得ますが、Fleet 管理ワークロードでは **imagePullSecrets を明示**します。
 
 ### 検討した他案
 
 | 案 | メリット | デメリット |
 | --- | --- | --- |
-| External Secrets | 集中管理 | 現行 overlay の主パターンではない |
-| クラスタ共通 Secret 1 つ | オブジェクトが少ない | 名前空間分離が弱い |
-| **名前空間ごと SealedSecret（採用）** | 既存 Mattermost/PostgreSQL と一致 | ローテ時に再 seal |
-
-### 要確認
-
-- relay Deployment の **Namespace**（専用 `mattermost-grok-relay` か Mattermost 近傍か）。
-- 既存 SealedSecret を流用するか、Namespace 用に再生成するか。
+| `mattermost` Namespace に同居 | Namespace が少ない | ライフサイクルが結合 |
+| 他 Namespace の SealedSecret をコピー | 早い | **strict では無効**（暗号文が Namespace 绑定） |
+| **専用 Namespace + 新規 SealedSecret（採用）** | 分離と Sealed Secrets の正しい使い方 | Fleet Issue で seal 作業が必要 |
 
 ---
 
@@ -141,25 +159,21 @@ CD は**このリポ**の `main` 向けに実装予定（別 Issue）。資格�
 
 ### 採用案
 
-**GitOps（タグ更新 PR）**
+**手動 GitOps のみ**—Harbor や本リポ CD から Fleet を**自動では更新しない**。
 
-1. CD が `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<sha>` を push。
-2. `my-k8s-platform` で relay overlay（想定: `apps/mattermost-grok-relay/overlays/dev/` 配下）の **`fleet.yaml` が参照する Deployment/マニフェストまたは Helm values 内のイメージタグ**を `<sha>` に更新する PR を作成・マージ（タグは必ずしも `fleet.yaml` 本体のフィールドではない）。
-3. Fleet が Git を同期し、クラスタが新イメージを pull。
+1. CD が `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<sha>` を push したあと、**手動で** `my-k8s-platform` に PR を出し、`apps/mattermost-grok-relay/overlays/dev/` 配下で **`fleet.yaml` が参照する manifest / Helm values のイメージタグ**を、その **`main` コミット SHA** に更新する。
+2. PR が `main` にマージされると Fleet が Git を同期し、クラスタが新イメージを pull する。
+3. **bot PR や dispatch による自動化**は**後続 Issue**に回す。最初の数回は**手動 PR**。
 
-PostgreSQL の Harbor 連携と同様、**Harbor にタグが増えただけでは Fleet は動かさない**。Renovate は主に upstream Helm 向けで、本リポの first-party イメージの主更新経路にはしない（将来ルール追加は可）。
+**採用しない:** Harbor webhook、first-party イメージ向け Renovate 自動 bump、`latest` だけの更新。
 
 ### 検討した他案
 
 | 案 | メリット | デメリット |
 | --- | --- | --- |
-| `main` 毎の bot PR | 反映が速い | レビュー・ガードが必要 |
-| `fleet-comparepatch-suggest` のみ | クラスタ drift 補正 | 新イメージ検知用途ではない |
-| **手動/PR で tag bump（採用）** | 監査可能・GitOps と一致 | CD のあと 1 ステップ必要 |
-
-### 要確認
-
-- CD 成功後に tag bump PR を半自動化する Action を入れるか。
+| `main` 毎の bot PR | 反映が速い | 今回の判断では後回し |
+| `fleet-comparepatch-suggest` のみ | drift 補正 | Harbor 新タグ検知には使わない |
+| **手動 tag bump PR（採用）** | 監査可能・GitOps と一致 | CD のあと手作業（自動化前） |
 
 ---
 
@@ -167,12 +181,13 @@ PostgreSQL の Harbor 連携と同様、**Harbor にタグが増えただけで�
 
 | リポジトリ | 役割 |
 | --- | --- |
-| `mattermost-grok-relay`（本リポ） | ソース、CI、将来 Harbor **push** |
-| `my-k8s-platform` | Fleet、SealedSecret、**イメージタグ pin** |
+| `mattermost-grok-relay`（本リポ） | ソース、CI、Harbor **push**（CD） |
+| `my-k8s-platform` | `apps/mattermost-grok-relay/overlays/dev/`、SealedSecret、**イメージタグ pin** |
 | `my-k8s-infra` | ノード `registries.yaml`、Terraform 用 `HARBOR_*` |
 
 ---
 
 ## 更新履歴
 
-- Harbor 公開/pull/Fleet タグ方針の初版（本リポはドキュメントのみ）。
+- Harbor 公開/pull/Fleet タグ方針の初版（ドキュメントのみ）。
+- 決定反映: クラスタ robot 共用、immutable tag、初回 push でリポ作成、self-hosted・main のみ CD、Namespace `mattermost-grok-relay`、SealedSecret 新規、Fleet は手動 PR、Dockerfile `ARG VERSION` は後続 Issue。
