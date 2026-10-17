@@ -31,4 +31,4 @@ The image **prints the version with `-version` and exits**; it is not a long-run
 
 ## Container images (Harbor)
 
-Registry hostnames and credentials are **not** stored in this repository. See [docs/image-policy.md](docs/image-policy.md) for the Harbor project/repository name, tag strategy, CI push secrets, Kubernetes `imagePullSecrets`, and Fleet tag update flow.
+Registry hostnames and credentials are **not** stored in this repository. See [docs/image-policy.md](docs/image-policy.md) (Japanese: [docs/image-policy.ja.md](docs/image-policy.ja.md)) for the Harbor project/repository name, tag strategy, CI push secrets, Kubernetes `imagePullSecrets`, and Fleet tag update flow.

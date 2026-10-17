@@ -2,7 +2,7 @@
 
 This document defines how **mattermost-grok-relay** container images are published to the private Harbor registry and how Kubernetes (Rancher Fleet) pulls them. It is the reference for follow-up work: **CD** (push on `main` merge) and **Fleet** (deploy manifests in `my-k8s-platform`).
 
-Operational values (registry hostname, passwords, home IP/DNS) **must not** appear in this public repository. Only secret **names**, variable **names**, and logical resource names are documented here.
+Operational values (registry hostname, passwords, private-network IP/DNS) **must not** appear in this public repository. Only secret **names**, variable **names**, and logical resource names are documented here.
 
 ## Summary
 
@@ -31,13 +31,14 @@ Operational values (registry hostname, passwords, home IP/DNS) **must not** appe
 | Option | Pros | Cons |
 | --- | --- | --- |
 | Dedicated Harbor project `mattermost-grok-relay` | Clear RBAC boundary per app | New project + robot accounts to operate; unlike existing self-built images under `library/` |
-| Push to Docker Hub / GHCR | No private registry setup | Conflicts with agreed home Harbor publish path; extra egress and credential surface |
+| Push to Docker Hub / GHCR | No private registry setup | Conflicts with agreed private Harbor publish path; extra egress and credential surface |
 | **`library/mattermost-grok-relay` (adopted)** | Matches existing pattern for self-built images (e.g. Bitnami PostgreSQL mirrors under `library/…` in `my-k8s-platform`) | Shares `library` with other images; RBAC is per-repository robot account |
 
 ### Open points
 
-- Confirm Harbor **robot account** scope: push-only robot for CI vs reuse of an existing org-wide robot (**see Credentials**).
+- Confirm Harbor **robot accounts**: CI **push** robot vs cluster/node **pull** robot (same or separate `robot$…` identities) and whether to reuse an org-wide robot.
 - Confirm whether a **new Harbor repository** must be created manually before the first CI push, or is created on first push (Harbor setting-dependent).
+- Enable Harbor **immutable tags** (or equivalent) on `library/mattermost-grok-relay` so a re-pushed SHA cannot change digest silently.
 
 ---
 
@@ -60,7 +61,7 @@ Operational values (registry hostname, passwords, home IP/DNS) **must not** appe
 
 ### Build-time version label
 
-The Dockerfile accepts build-arg `VERSION` for `-ldflags` (binary `mattermost-grok-relay -version`). CD should set `VERSION` to the same value as the image tag (the Git SHA or semver tag used for that build).
+The Dockerfile **references** `${VERSION}` in `-ldflags` but does not yet declare `ARG VERSION`; CD work must add that line so `--build-arg VERSION=…` is not ignored. CD should set `VERSION` to the same value as the image tag (the Git SHA or semver tag used for that build).
 
 ---
 
@@ -77,7 +78,7 @@ Align with `my-k8s-platform` Harbor workflows where possible:
 | `HARBOR_REGISTRY` | Actions **secret** (or **variable** if non-sensitive host only) | Registry hostname for `docker login` and image name prefix |
 | `HARBOR_USERNAME` | Actions **secret** | Harbor robot or user with **push** to `library/mattermost-grok-relay` |
 | `HARBOR_PASSWORD` | Actions **secret** | Token/password for `HARBOR_USERNAME` |
-| `HARBOR_INSECURE_SKIP_VERIFY` | Actions **variable** (optional) | When the registry uses a private CA/self-signed TLS, set to `true` for login/buildkit (same idea as Terraform `harbor_insecure_skip_verify` in `my-k8s-infra`) |
+| `HARBOR_INSECURE_SKIP_VERIFY` | Actions **variable** (optional) | Records intent when the registry uses a private CA/self-signed TLS (same idea as Terraform `harbor_insecure_skip_verify` in `my-k8s-infra`). The CD workflow must map this to runner/docker/buildkit TLS settings—the variable alone does not skip verification. |
 
 Optional **repository variable** (non-secret):
 
@@ -104,13 +105,13 @@ Optional **repository variable** (non-secret):
 ### Open points
 
 - Which Harbor **robot account** receives push permission (`robot$…` name and project role).
-- Whether CI runs on **GitHub-hosted** or **self-hosted** runners (self-hosted can reach a home registry without extra tunneling; affects CD workflow design only).
+- Whether CI runs on **GitHub-hosted** or **self-hosted** runners (self-hosted can reach a private registry without extra tunneling; affects CD workflow design only).
 
 ---
 
 ## Kubernetes: pull credentials
 
-Runtime manifests live in **`my-k8s-platform`**, not in this repo (see ADR: app code here, Fleet overlays there).
+Runtime manifests live in **`my-k8s-platform`**, not in this repo (app code in this repository; Fleet overlays in `my-k8s-platform`).
 
 ### Adopted
 
@@ -142,7 +143,7 @@ Node-level **containerd** auth via `registries.yaml` (Terraform template in `my-
 
 **Manual GitOps (tag update PR)** in `my-k8s-platform`:
 
-1. After CD pushes `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<sha>`, open a PR that updates the relay overlay (expected path: `apps/mattermost-grok-relay/overlays/dev/fleet.yaml` or equivalent) **image tag** to that SHA.
+1. After CD pushes `${HARBOR_REGISTRY}/library/mattermost-grok-relay:<sha>`, open a PR that updates the relay overlay (expected under `apps/mattermost-grok-relay/overlays/dev/`) **image tag** in the Deployment/manifest or Helm values referenced by `fleet.yaml`—not necessarily a field inside `fleet.yaml` itself—to that SHA.
 2. Fleet syncs from Git; clusters pull the new digest when the PR merges to `main`.
 3. **Renovate** in `my-k8s-platform` remains focused on upstream Helm charts; it is **not** the primary mechanism for this first-party image (unless a dedicated Renovate rule is added later).
 
