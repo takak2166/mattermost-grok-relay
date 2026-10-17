@@ -1,0 +1,11 @@
+.git
+.github
+bin/
+dist/
+*.out
+coverage.html
+.env
+.env.*
+.idea/
+.vscode/
+README.md

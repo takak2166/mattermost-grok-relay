@@ -1,5 +1,30 @@
 # mattermost-grok-relay
 
-Mattermost と Grok Bot をつなぐ中継サービス（relay）の Go 実装リポジトリです。
+**Languages:** [English](README.md) | [日本語 (README.ja.md)](README.ja.md)
 
-本リポジトリは新規 Go プロジェクトとして一から構築します。ビジネスロジックは後続 Issue で追加します。
+Go implementation of a relay service between Mattermost and Grok Bot.
+
+This repository is a greenfield Go project. Business logic will land in follow-up work.
+
+## Layering (scaffold)
+
+- `cmd/` holds entrypoints only; logic lives under `internal/`.
+- Dependencies flow `cmd → internal` only (minimal cross-`internal` coupling).
+- Logging will use the standard library `log/slog` once relay logic is implemented.
+- Boundary packages for external APIs (Mattermost, Grok, and similar) will be added under `internal/` as features arrive.
+
+## Development
+
+```bash
+go test ./...
+go run ./cmd/mattermost-grok-relay -version
+```
+
+## Docker
+
+```bash
+docker build -t mattermost-grok-relay:local .
+docker run --rm mattermost-grok-relay:local -version
+```
+
+The image **prints the version with `-version` and exits**; it is not a long-running process yet. Always-on WebSocket relay logic and the default container command will change when that work lands.
