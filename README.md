@@ -28,3 +28,7 @@ docker run --rm mattermost-grok-relay:local -version
 ```
 
 The image **prints the version with `-version` and exits**; it is not a long-running process yet. Always-on WebSocket relay logic and the default container command will change when that work lands.
+
+## Container images (Harbor)
+
+Registry hostnames and credentials are **not** stored in this repository. See [docs/image-policy.md](docs/image-policy.md) (Japanese: [docs/image-policy.ja.md](docs/image-policy.ja.md)) for Harbor image naming, tag strategy, CI push settings, and how deploy tags are updated (deploy manifests live in a separate private repository).

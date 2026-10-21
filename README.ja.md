@@ -28,3 +28,7 @@ docker run --rm mattermost-grok-relay:local -version
 ```
 
 現状のイメージは **`-version` でバージョン表示して終了するだけ** です（常駐プロセスにはなりません）。relay の常時接続ロジックは後続で入れ、デフォルト CMD もそのとき更新します。
+
+## コンテナイメージ（Harbor）
+
+レジストリのホスト名や資格情報の実値は本リポに置きません。Harbor のイメージ名、タグ方針、CI の push 設定、デプロイタグの更新の流れ（デプロイ manifest は別の非公開リポジトリ）は [docs/image-policy.ja.md](docs/image-policy.ja.md)（英語: [docs/image-policy.md](docs/image-policy.md)）を参照してください。
