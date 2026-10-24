@@ -1,5 +1,7 @@
 # Container image policy (Harbor)
 
+**Languages:** [English](image-policy.md) | [日本語 (image-policy.ja.md)](image-policy.ja.md)
+
 This document defines how **mattermost-grok-relay** container images are published to a private Harbor registry and how they are deployed to Kubernetes. Follow-up work in this repository covers **CD** (push on `main` merge); deploy manifests and cluster pull credentials live in a **separate private repository** (not named here).
 
 Registry hostnames, passwords, private-network addresses, and robot account names **must not** appear in this public repository. This document lists only GitHub Actions secret/variable **names** and decisions that belong in this repo.
@@ -86,13 +88,13 @@ Adding Dockerfile **`ARG VERSION`** and CD `--build-arg VERSION=…` is **deferr
 | `HARBOR_REGISTRY` | Secret or variable | Registry **host** for `docker login` (no path) |
 | `HARBOR_USERNAME` | Secret | Robot username for push |
 | `HARBOR_PASSWORD` | Secret | Robot token/password |
-| `HARBOR_INSECURE_SKIP_VERIFY` | Variable (optional) | Documents TLS verify skip **intent**; CD must configure runner/docker/buildkit accordingly |
+| `HARBOR_INSECURE_SKIP_VERIFY` | Variable (optional) | Documents TLS verify skip **intent**; CD must configure runner/docker/buildkit accordingly. Skipping TLS verification increases MITM risk—use only as a **temporary** measure on a trusted home network and remove it once proper certificates are in place. |
 | `HARBOR_REPOSITORY` | Variable (optional) | Default `library/mattermost-grok-relay`; if changed, tag/push and deploy manifests must use `${HARBOR_REGISTRY}/${HARBOR_REPOSITORY}:<tag>` |
 
 ### Push flow (target CD)
 
 1. Self-hosted runner with CD label; checkout `${{ github.sha }}`.
-2. `docker login "${HARBOR_REGISTRY}"`.
+2. `echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin`.
 3. `docker build` (no `VERSION` build-arg until follow-up issue).
 4. Tag and push `${HARBOR_REGISTRY}/${HARBOR_REPOSITORY}:${{ github.sha }}` only.
 
@@ -121,7 +123,7 @@ Application **source and CD** live in **this** public repository. **GitOps manif
 | Option | Pros | Cons |
 | --- | --- | --- |
 | Share another app’s namespace | Fewer namespaces | Coupled lifecycle |
-| **Dedicated namespace (adopted)** | Clear boundary for the relay |
+| **Dedicated namespace (adopted)** | Clear boundary for the relay | Adds one dedicated namespace |
 
 ---
 

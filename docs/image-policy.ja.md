@@ -1,5 +1,7 @@
 # コンテナイメージ方針（Harbor）
 
+**言語:** [English (image-policy.md)](image-policy.md) | [日本語](image-policy.ja.md)
+
 **mattermost-grok-relay** のコンテナイメージを私有 Harbor に公開し、Kubernetes へデプロイする方針です。本リポの後続作業は **CD**（`main` マージ時の push）です。**GitOps マニフェストと pull 用 Secret** は**別の非公開リポジトリ**で管理します（名称・パスは本公開リポに書きません）。
 
 レジストリのホスト名、パスワード、私有アドレス、robot 名などの**実値は公開リポに置きません**。GitHub Actions の secret/variable **名**と、本リポに属する決定事項だけを記載します。
@@ -53,7 +55,7 @@
 | 案 | メリット | デメリット |
 | --- | --- | --- |
 | push 専用 robot | push 権限を最小化 | 資格情報が増える |
-| **既存 robot 流用（採用）** | 身份が一つ | push 権限の付与が必要 |
+| **既存 robot 流用（採用）** | 資格情報が一つ | push 権限の付与が必要 |
 
 ---
 
@@ -86,13 +88,13 @@ Dockerfile **`ARG VERSION`** と CD の build-arg 連携は**後続 Issue**。�
 | `HARBOR_REGISTRY` | secret または variable | `docker login` 用**ホスト**（パス不可） |
 | `HARBOR_USERNAME` | secret | push 用 robot ユーザー名 |
 | `HARBOR_PASSWORD` | secret | robot トークン |
-| `HARBOR_INSECURE_SKIP_VERIFY` | variable（任意） | TLS 検証スキップの**意図**を記録。CD で runner/docker/buildkit 側に反映 |
+| `HARBOR_INSECURE_SKIP_VERIFY` | variable（任意） | TLS 検証スキップの**意図**を記録。CD で runner/docker/buildkit 側に反映。TLS 検証を無効にすると中間者攻撃のリスクが高まるため、信頼できる自宅ネットワーク上の**一時的**な措置に留め、正しい証明書に移行したら外す。 |
 | `HARBOR_REPOSITORY` | variable（任意） | 既定 `library/mattermost-grok-relay`。変更時は tag/push とデプロイ manifest 双方で `${HARBOR_REGISTRY}/${HARBOR_REPOSITORY}:<tag>` |
 
 ### push 手順（CD 想定）
 
 1. CD ラベル付き self-hosted で `${{ github.sha }}` を checkout。
-2. `docker login "${HARBOR_REGISTRY}"`。
+2. `echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin`。
 3. `docker build`（`VERSION` build-arg は後続 Issue まで省略可）。
 4. `${HARBOR_REGISTRY}/${HARBOR_REPOSITORY}:${{ github.sha }}` のみ tag & push。
 
@@ -121,7 +123,7 @@ Dockerfile **`ARG VERSION`** と CD の build-arg 連携は**後続 Issue**。�
 | 案 | メリット | デメリット |
 | --- | --- | --- |
 | 他アプリ Namespace と共有 | Namespace 数が少ない | ライフサイクル結合 |
-| **専用 Namespace（採用）** | relay の境界が明確 |
+| **専用 Namespace（採用）** | relay の境界が明確 | 専用 Namespace が一つ増える |
 
 ---
 
