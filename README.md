@@ -13,6 +13,21 @@ This repository is a greenfield Go project. Business logic will land in follow-u
 - Logging will use the standard library `log/slog` once relay logic is implemented.
 - Boundary packages for external APIs (Mattermost, Grok, and similar) will be added under `internal/` as features arrive.
 
+## Configuration
+
+Bot routing is defined in JSON (file or inline env). Add one object under `bots` per Mattermost bot user; tokens are **not** stored in the file.
+
+| Field | Description |
+| --- | --- |
+| `id` | Mattermost bot user identifier (unique) |
+| `webhook_url` | Grok Bot inbound webhook URL for this bot |
+| `token_env` | Name of an environment variable holding the bot token |
+| `token_file` | Path to a file containing the bot token (e.g. mounted secret) |
+
+Use exactly one of `token_env` or `token_file` per bot. Set `RELAY_CONFIG` to a file path, `RELAY_CONFIG_JSON` for inline JSON, or pass `-config path`.
+
+See `internal/config/testdata/example.json` for a sample.
+
 ## Development
 
 ```bash

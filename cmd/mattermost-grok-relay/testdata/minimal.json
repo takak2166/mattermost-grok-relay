@@ -1,0 +1,9 @@
+{
+  "bots": [
+    {
+      "id": "test-bot",
+      "webhook_url": "https://grok.example.invalid/hook/test",
+      "token_env": "RELAY_TEST_TOKEN"
+    }
+  ]
+}

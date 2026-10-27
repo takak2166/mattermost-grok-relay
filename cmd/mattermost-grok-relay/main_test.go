@@ -25,10 +25,19 @@ func TestRun(t *testing.T) {
 			wantStdout: "mattermost-grok-relay " + app.Version + "\n",
 		},
 		{
-			name:       "no args",
+			name:       "no args without config",
 			args:       []string{"mattermost-grok-relay"},
 			wantCode:   1,
-			wantStderr: "relay logic is not implemented yet; use -version to print the build version\n",
+			wantStderr: "config load failed:",
+		},
+		{
+			name: "config loaded then relay placeholder",
+			args: []string{
+				"mattermost-grok-relay",
+				"-config", "testdata/minimal.json",
+			},
+			wantCode:   1,
+			wantStderr: "relay logic is not implemented yet",
 		},
 		{
 			name:       "unknown flag",
@@ -48,7 +57,13 @@ func TestRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var stdout, stderr bytes.Buffer
-			code := run(tt.args, &stdout, &stderr)
+			lookup := func(key string) (string, bool) {
+				if key == "RELAY_TEST_TOKEN" {
+					return "test-token-value", true
+				}
+				return "", false
+			}
+			code := run(tt.args, &stdout, &stderr, lookup)
 			if code != tt.wantCode {
 				t.Fatalf("exit code = %d, want %d", code, tt.wantCode)
 			}

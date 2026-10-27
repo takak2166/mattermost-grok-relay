@@ -1,0 +1,62 @@
+package config
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+	"testing"
+)
+
+const testToken = "mm-bot-token-super-secret-value"
+const testWebhook = "https://grok.example.invalid/routines/orimar/inbound?key=abc123"
+
+func TestSecretDoesNotLeak(t *testing.T) {
+	t.Parallel()
+	s := newSecret(testToken)
+
+	assertNoLeak(t, testToken, s.String())
+	assertNoLeak(t, testToken, s.GoString())
+	assertNoLeak(t, testToken, fmt.Sprintf("%v", s))
+	assertNoLeak(t, testToken, fmt.Sprintf("%#v", s))
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	logger.Info("token", "secret", s)
+	assertNoLeak(t, testToken, buf.String())
+
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	assertNoLeak(t, testToken, string(data))
+}
+
+func TestWebhookURLDoesNotLeak(t *testing.T) {
+	t.Parallel()
+	u := newWebhookURL(testWebhook)
+
+	assertNoLeak(t, testWebhook, u.String())
+	assertNoLeak(t, testWebhook, u.GoString())
+	assertNoLeak(t, testWebhook, fmt.Sprintf("%v", u))
+	assertNoLeak(t, testWebhook, fmt.Sprintf("%#v", u))
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	logger.Info("webhook", "url", u)
+	assertNoLeak(t, testWebhook, buf.String())
+
+	data, err := json.Marshal(u)
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	assertNoLeak(t, testWebhook, string(data))
+}
+
+func assertNoLeak(t *testing.T, secret, output string) {
+	t.Helper()
+	if strings.Contains(output, secret) {
+		t.Fatalf("output leaked secret %q: %q", secret, output)
+	}
+}

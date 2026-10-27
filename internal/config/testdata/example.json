@@ -1,0 +1,9 @@
+{
+  "bots": [
+    {
+      "id": "orimar-bot-user-id",
+      "webhook_url": "https://grok.example.invalid/routines/orimar/inbound",
+      "token_env": "RELAY_BOT_TOKEN_ORIMAR"
+    }
+  ]
+}
