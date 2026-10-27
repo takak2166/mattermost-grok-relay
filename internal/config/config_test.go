@@ -215,6 +215,22 @@ func TestLoadFailClosed(t *testing.T) {
 			want: "valid https URL",
 		},
 		{
+			name: "webhook missing hostname",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://:443/hook","token_env":"T"}]}`,
+				LookupEnv:  func(string) (string, bool) { return "tok", true },
+			},
+			want: "valid https URL",
+		},
+		{
+			name: "trailing json after config",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_env":"T"}]} {"bots":[]}`,
+				LookupEnv:  func(string) (string, bool) { return "tok", true },
+			},
+			want: "trailing data",
+		},
+		{
 			name: "second bot validation index",
 			opts: LoadOptions{
 				ConfigJSON: `{"bots":[{"id":"ok","webhook_url":"https://grok.example.invalid/h1","token_env":"T1"},{"id":"","webhook_url":"https://grok.example.invalid/h2","token_env":"T2"}]}`,

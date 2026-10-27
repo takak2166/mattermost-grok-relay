@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -114,6 +115,9 @@ func readRawConfig(opts LoadOptions) (rawConfig, error) {
 	if err := dec.Decode(&raw); err != nil {
 		return rawConfig{}, fmt.Errorf("config: invalid JSON: %w", err)
 	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return rawConfig{}, fmt.Errorf("config: invalid JSON: trailing data after config object")
+	}
 	return raw, nil
 }
 
@@ -163,7 +167,7 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 
 func validateWebhookURL(raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
 		return fmt.Errorf("webhook_url must be a valid https URL")
 	}
 	return nil
