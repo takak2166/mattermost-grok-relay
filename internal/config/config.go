@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -31,11 +33,28 @@ type rawBot struct {
 }
 
 // LoadOptions selects where configuration and secrets are read from.
+// When both ConfigPath and ConfigJSON are set, Load returns an error.
 type LoadOptions struct {
 	ConfigPath string
 	ConfigJSON string
 	LookupEnv  func(string) (string, bool)
 	ReadFile   func(string) ([]byte, error)
+}
+
+// ApplySources fills ConfigPath or ConfigJSON from the -config flag and environment.
+// Precedence: flagConfigPath, then RELAY_CONFIG, then RELAY_CONFIG_JSON.
+func (opts *LoadOptions) ApplySources(flagConfigPath string) {
+	if path := strings.TrimSpace(flagConfigPath); path != "" {
+		opts.ConfigPath = path
+		return
+	}
+	if path, ok := lookupTrimmed(opts.LookupEnv, "RELAY_CONFIG"); ok {
+		opts.ConfigPath = path
+		return
+	}
+	if inline, ok := lookupTrimmed(opts.LookupEnv, "RELAY_CONFIG_JSON"); ok {
+		opts.ConfigJSON = inline
+	}
 }
 
 // Load reads and validates relay configuration. It fails closed on any error.
@@ -70,6 +89,10 @@ func Load(opts LoadOptions) (Config, error) {
 }
 
 func readRawConfig(opts LoadOptions) (rawConfig, error) {
+	if opts.ConfigJSON != "" && opts.ConfigPath != "" {
+		return rawConfig{}, fmt.Errorf("config: config file path and inline JSON are mutually exclusive")
+	}
+
 	var payload []byte
 	switch {
 	case opts.ConfigJSON != "":
@@ -77,18 +100,18 @@ func readRawConfig(opts LoadOptions) (rawConfig, error) {
 	case opts.ConfigPath != "":
 		data, err := opts.ReadFile(opts.ConfigPath)
 		if err != nil {
-			if os.IsNotExist(err) {
-				return rawConfig{}, fmt.Errorf("config: file not found")
-			}
-			return rawConfig{}, fmt.Errorf("config: read file: %w", err)
+			return rawConfig{}, fmt.Errorf("config: read %q: %w", opts.ConfigPath, err)
 		}
 		payload = data
 	default:
 		return rawConfig{}, fmt.Errorf("config: set RELAY_CONFIG, RELAY_CONFIG_JSON, or -config")
 	}
 
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.DisallowUnknownFields()
+
 	var raw rawConfig
-	if err := json.Unmarshal(payload, &raw); err != nil {
+	if err := dec.Decode(&raw); err != nil {
 		return rawConfig{}, fmt.Errorf("config: invalid JSON: %w", err)
 	}
 	return raw, nil
@@ -109,6 +132,9 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 	webhook := strings.TrimSpace(entry.WebhookURL)
 	if webhook == "" {
 		return Bot{}, fmt.Errorf("%s: webhook_url is required", prefix)
+	}
+	if err := validateWebhookURL(webhook); err != nil {
+		return Bot{}, fmt.Errorf("%s: %w", prefix, err)
 	}
 
 	tokenEnv := strings.TrimSpace(entry.TokenEnv)
@@ -135,6 +161,14 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 	}, nil
 }
 
+func validateWebhookURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return fmt.Errorf("webhook_url must be a valid https URL")
+	}
+	return nil
+}
+
 func loadToken(tokenEnv, tokenFile string, opts LoadOptions) (string, error) {
 	if tokenEnv != "" {
 		value, ok := opts.LookupEnv(tokenEnv)
@@ -146,22 +180,9 @@ func loadToken(tokenEnv, tokenFile string, opts LoadOptions) (string, error) {
 
 	data, err := opts.ReadFile(tokenFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("token file not found")
-		}
-		return "", fmt.Errorf("read token file: %w", err)
+		return "", fmt.Errorf("read token file %q: %w", tokenFile, err)
 	}
 	return strings.TrimSpace(string(data)), nil
-}
-
-// ConfigPathFromEnv returns RELAY_CONFIG when set.
-func ConfigPathFromEnv() (string, bool) {
-	return lookupTrimmed(os.LookupEnv, "RELAY_CONFIG")
-}
-
-// ConfigJSONFromEnv returns RELAY_CONFIG_JSON when set.
-func ConfigJSONFromEnv() (string, bool) {
-	return lookupTrimmed(os.LookupEnv, "RELAY_CONFIG_JSON")
 }
 
 func lookupTrimmed(lookup func(string) (string, bool), key string) (string, bool) {

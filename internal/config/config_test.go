@@ -1,12 +1,68 @@
 package config
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
 )
+
+//go:embed testdata/example.json
+var exampleConfigJSON []byte
+
+func TestLoadExampleFixture(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := Load(LoadOptions{
+		ConfigJSON: string(exampleConfigJSON),
+		LookupEnv: func(key string) (string, bool) {
+			if key == "RELAY_BOT_TOKEN_ORIMAR" {
+				return testToken, true
+			}
+			return "", false
+		},
+	})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Bots[0].ID != "orimar-bot-user-id" {
+		t.Fatalf("id = %q", cfg.Bots[0].ID)
+	}
+}
+
+func TestApplySourcesPrecedence(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{
+		"RELAY_CONFIG":      "/env/config.json",
+		"RELAY_CONFIG_JSON": `{"bots":[]}`,
+	}
+	lookup := func(key string) (string, bool) {
+		v, ok := env[key]
+		return v, ok
+	}
+
+	opts := LoadOptions{LookupEnv: lookup}
+	opts.ApplySources("/flag/config.json")
+	if opts.ConfigPath != "/flag/config.json" || opts.ConfigJSON != "" {
+		t.Fatalf("flag path: %+v", opts)
+	}
+
+	opts = LoadOptions{LookupEnv: lookup}
+	opts.ApplySources("")
+	if opts.ConfigPath != "/env/config.json" || opts.ConfigJSON != "" {
+		t.Fatalf("RELAY_CONFIG: %+v", opts)
+	}
+
+	delete(env, "RELAY_CONFIG")
+	opts = LoadOptions{LookupEnv: lookup}
+	opts.ApplySources("")
+	if opts.ConfigJSON == "" || opts.ConfigPath != "" {
+		t.Fatalf("RELAY_CONFIG_JSON: %+v", opts)
+	}
+}
 
 func TestLoadSuccessFromJSON(t *testing.T) {
 	t.Parallel()
@@ -125,7 +181,61 @@ func TestLoadFailClosed(t *testing.T) {
 				ConfigPath: "/missing/config.json",
 				ReadFile:   func(string) ([]byte, error) { return nil, fs.ErrNotExist },
 			},
-			want: "file not found",
+			want: "read \"/missing/config.json\"",
+		},
+		{
+			name: "mutually exclusive sources",
+			opts: LoadOptions{
+				ConfigPath: "/a.json",
+				ConfigJSON: `{"bots":[]}`,
+			},
+			want: "mutually exclusive",
+		},
+		{
+			name: "unknown json field",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_envv":"T"}]}`,
+			},
+			want: "invalid JSON",
+		},
+		{
+			name: "invalid webhook scheme",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"http://grok.example.invalid/h","token_env":"T"}]}`,
+				LookupEnv:  func(string) (string, bool) { return "tok", true },
+			},
+			want: "valid https URL",
+		},
+		{
+			name: "invalid webhook value",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"not-a-url","token_env":"T"}]}`,
+				LookupEnv:  func(string) (string, bool) { return "tok", true },
+			},
+			want: "valid https URL",
+		},
+		{
+			name: "second bot validation index",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"ok","webhook_url":"https://grok.example.invalid/h1","token_env":"T1"},{"id":"","webhook_url":"https://grok.example.invalid/h2","token_env":"T2"}]}`,
+				LookupEnv: func(key string) (string, bool) {
+					return "tok", key == "T1" || key == "T2"
+				},
+			},
+			want: "bots[1]",
+		},
+		{
+			name: "token file missing",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_file":"/missing/token"}]}`,
+				ReadFile: func(path string) ([]byte, error) {
+					if strings.HasSuffix(path, "token") {
+						return nil, fs.ErrNotExist
+					}
+					return nil, errors.New("unexpected")
+				},
+			},
+			want: "read token file",
 		},
 		{
 			name: "invalid json",

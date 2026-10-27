@@ -54,6 +54,30 @@ func TestWebhookURLDoesNotLeak(t *testing.T) {
 	assertNoLeak(t, testWebhook, string(data))
 }
 
+func TestSecretUnmarshalJSONRejected(t *testing.T) {
+	t.Parallel()
+	var s Secret
+	if err := json.Unmarshal([]byte(`"raw-token"`), &s); err == nil {
+		t.Fatal("expected error unmarshaling secret from JSON")
+	}
+}
+
+func TestBotJSONRedactsSecrets(t *testing.T) {
+	t.Parallel()
+	b := Bot{
+		ID:         "bot-a",
+		WebhookURL: newWebhookURL(testWebhook),
+		Token:      newSecret(testToken),
+	}
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	out := string(data)
+	assertNoLeak(t, testToken, out)
+	assertNoLeak(t, testWebhook, out)
+}
+
 func assertNoLeak(t *testing.T, secret, output string) {
 	t.Helper()
 	if strings.Contains(output, secret) {

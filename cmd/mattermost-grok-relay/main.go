@@ -36,13 +36,7 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 	}
 
 	opts := config.LoadOptions{LookupEnv: lookupEnv}
-	if *configPath != "" {
-		opts.ConfigPath = *configPath
-	} else if path, ok := config.ConfigPathFromEnv(); ok {
-		opts.ConfigPath = path
-	} else if inline, ok := config.ConfigJSONFromEnv(); ok {
-		opts.ConfigJSON = inline
-	}
+	opts.ApplySources(*configPath)
 
 	if _, err := config.Load(opts); err != nil {
 		if _, werr := fmt.Fprintf(stderr, "config load failed: %s\n", err); werr != nil {
