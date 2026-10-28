@@ -172,23 +172,41 @@ func TestLoadRejectsLegacyWebhookURLField(t *testing.T) {
 func TestLoadErrorsDoNotLeakWebhookURL(t *testing.T) {
 	t.Parallel()
 
-	sensitiveURL := "http://grok.example.invalid/secret-path?key=must-not-leak"
-	_, err := Load(LoadOptions{
-		ConfigJSON: `{"bots":[{"id":"x","url_env":"SECRET_URL","token_env":"T"}]}`,
-		LookupEnv: testLookup(map[string]string{
-			"SECRET_URL": sensitiveURL,
-			"T":          testToken,
-		}),
-	})
-	if err == nil {
-		t.Fatal("expected error")
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{
+			name: "invalid scheme",
+			url:  "http://grok.example.invalid/secret-path?key=must-not-leak",
+		},
+		{
+			name: "url parse error",
+			url:  "https://grok.example.invalid/se cret-path?key=must-not-leak",
+		},
 	}
-	msg := err.Error()
-	if strings.Contains(msg, sensitiveURL) {
-		t.Fatalf("error leaked webhook URL: %q", msg)
-	}
-	if !strings.Contains(msg, `id "x"`) {
-		t.Fatalf("error should mention bot id: %q", msg)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Load(LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"x","url_env":"SECRET_URL","token_env":"T"}]}`,
+				LookupEnv: testLookup(map[string]string{
+					"SECRET_URL": tt.url,
+					"T":          testToken,
+				}),
+			})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			msg := err.Error()
+			if strings.Contains(msg, tt.url) {
+				t.Fatalf("error leaked webhook URL: %q", msg)
+			}
+			if !strings.Contains(msg, `id "x"`) {
+				t.Fatalf("error should mention bot id: %q", msg)
+			}
+		})
 	}
 }
 
