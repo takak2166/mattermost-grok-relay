@@ -12,11 +12,12 @@ func TestRun(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		args       []string
-		wantCode   int
-		wantStdout string
-		wantStderr string
+		name            string
+		args            []string
+		wantCode        int
+		wantStdout      string
+		wantStderr      string
+		assertNoWebhook string
 	}{
 		{
 			name:       "version flag",
@@ -36,8 +37,9 @@ func TestRun(t *testing.T) {
 				"mattermost-grok-relay",
 				"-config", "testdata/minimal.json",
 			},
-			wantCode:   1,
-			wantStderr: "relay logic is not implemented yet",
+			wantCode:        1,
+			wantStderr:      "relay logic is not implemented yet",
+			assertNoWebhook: "https://grok.example.invalid/hook/test",
 		},
 		{
 			name:       "unknown flag",
@@ -68,9 +70,8 @@ func TestRun(t *testing.T) {
 				}
 			}
 			code := run(tt.args, &stdout, &stderr, lookup)
-			if tt.name == "config loaded then relay placeholder" {
-				leak := "https://grok.example.invalid/hook/test"
-				if strings.Contains(stdout.String(), leak) || strings.Contains(stderr.String(), leak) {
+			if tt.assertNoWebhook != "" {
+				if strings.Contains(stdout.String(), tt.assertNoWebhook) || strings.Contains(stderr.String(), tt.assertNoWebhook) {
 					t.Fatalf("output leaked webhook URL")
 				}
 			}
