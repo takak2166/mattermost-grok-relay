@@ -43,9 +43,19 @@ type LoadOptions struct {
 	ReadFile   func(string) ([]byte, error)
 }
 
+func (opts *LoadOptions) ensureDefaults() {
+	if opts.LookupEnv == nil {
+		opts.LookupEnv = os.LookupEnv
+	}
+	if opts.ReadFile == nil {
+		opts.ReadFile = os.ReadFile
+	}
+}
+
 // ApplySources fills ConfigPath or ConfigJSON from the -config flag and environment.
 // Precedence: flagConfigPath, then RELAY_CONFIG, then RELAY_CONFIG_JSON.
 func (opts *LoadOptions) ApplySources(flagConfigPath string) {
+	opts.ensureDefaults()
 	if path := strings.TrimSpace(flagConfigPath); path != "" {
 		opts.ConfigPath = path
 		return
@@ -61,12 +71,7 @@ func (opts *LoadOptions) ApplySources(flagConfigPath string) {
 
 // Load reads and validates relay configuration. It fails closed on any error.
 func Load(opts LoadOptions) (Config, error) {
-	if opts.LookupEnv == nil {
-		opts.LookupEnv = os.LookupEnv
-	}
-	if opts.ReadFile == nil {
-		opts.ReadFile = os.ReadFile
-	}
+	opts.ensureDefaults()
 
 	raw, err := readRawConfig(opts)
 	if err != nil {
@@ -180,7 +185,7 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 
 func validateWebhookURL(raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
 		return fmt.Errorf("url value must be a valid https URL with a hostname")
 	}
 	return nil

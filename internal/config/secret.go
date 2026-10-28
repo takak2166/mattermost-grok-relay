@@ -76,6 +76,11 @@ func (u WebhookURL) MarshalJSON() ([]byte, error) {
 	return json.Marshal(redacted)
 }
 
+// UnmarshalJSON rejects direct JSON decoding of webhook URLs (use url_env or url_file).
+func (u *WebhookURL) UnmarshalJSON([]byte) error {
+	return fmt.Errorf("webhook URL values cannot be loaded from config JSON; use url_env or url_file")
+}
+
 // Value returns the raw URL for use by trusted code only.
 func (u WebhookURL) Value() string {
 	return u.value

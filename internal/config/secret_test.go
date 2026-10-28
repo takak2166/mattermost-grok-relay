@@ -62,6 +62,14 @@ func TestSecretUnmarshalJSONRejected(t *testing.T) {
 	}
 }
 
+func TestWebhookURLUnmarshalJSONRejected(t *testing.T) {
+	t.Parallel()
+	var u WebhookURL
+	if err := json.Unmarshal([]byte(`"https://grok.example.invalid/h"`), &u); err == nil {
+		t.Fatal("expected error unmarshaling webhook URL from JSON")
+	}
+}
+
 func TestBotJSONRedactsSecrets(t *testing.T) {
 	t.Parallel()
 	b := Bot{
@@ -82,5 +90,8 @@ func assertNoLeak(t *testing.T, secret, output string) {
 	t.Helper()
 	if strings.Contains(output, secret) {
 		t.Fatalf("output leaked secret %q: %q", secret, output)
+	}
+	if secret != "" && output != "" && !strings.Contains(output, redacted) {
+		t.Fatalf("output should contain %q: %q", redacted, output)
 	}
 }

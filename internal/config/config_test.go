@@ -152,6 +152,32 @@ func TestLoadAddsBotWithoutCodeChange(t *testing.T) {
 	if len(cfg.Bots) != 2 {
 		t.Fatalf("bots len = %d, want 2", len(cfg.Bots))
 	}
+	if cfg.Bots[0].ID != "orimar" || cfg.Bots[1].ID != "helper" {
+		t.Fatalf("ids = %q, %q", cfg.Bots[0].ID, cfg.Bots[1].ID)
+	}
+	if cfg.Bots[0].WebhookURL.Value() != env["U_ORIMAR"] || cfg.Bots[1].WebhookURL.Value() != env["U_HELPER"] {
+		t.Fatalf("webhook mismatch")
+	}
+	if cfg.Bots[0].Token.Value() != "tok-a" || cfg.Bots[1].Token.Value() != "tok-b" {
+		t.Fatalf("token mismatch")
+	}
+}
+
+func TestApplySourcesNilLookupEnvDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	opts := LoadOptions{}
+	opts.ApplySources("")
+}
+
+func TestApplySourcesUsesRelayConfigJSONEnv(t *testing.T) {
+	t.Parallel()
+	opts := LoadOptions{LookupEnv: testLookup(map[string]string{
+		"RELAY_CONFIG_JSON": `{"bots":[]}`,
+	})}
+	opts.ApplySources("")
+	if opts.ConfigJSON == "" {
+		t.Fatal("expected RELAY_CONFIG_JSON to be applied")
+	}
 }
 
 func TestLoadRejectsLegacyWebhookURLField(t *testing.T) {
@@ -181,8 +207,8 @@ func TestLoadErrorsDoNotLeakWebhookURL(t *testing.T) {
 			url:  "http://grok.example.invalid/secret-path?key=must-not-leak",
 		},
 		{
-			name: "url parse error",
-			url:  "https://grok.example.invalid/se cret-path?key=must-not-leak",
+			name: "unparseable url value",
+			url:  "not-a-url-secret-value-must-not-leak",
 		},
 	}
 
@@ -409,6 +435,39 @@ func TestLoadFailClosed(t *testing.T) {
 				}),
 			},
 			want: "missing or empty",
+		},
+		{
+			name: "whitespace only token file",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_file":"/secrets/token"}]}`,
+				LookupEnv:  testLookup(map[string]string{"U": testWebhook}),
+				ReadFile: func(string) ([]byte, error) {
+					return []byte("   \n"), nil
+				},
+			},
+			want: "token is empty",
+		},
+		{
+			name: "whitespace only url file",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","url_file":"/secrets/url","token_env":"T"}]}`,
+				LookupEnv:  testLookup(map[string]string{"T": testToken}),
+				ReadFile: func(string) ([]byte, error) {
+					return []byte("   \n"), nil
+				},
+			},
+			want: "url value is empty",
+		},
+		{
+			name: "webhook with userinfo",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]}`,
+				LookupEnv: testLookup(map[string]string{
+					"U": "https://user:pass@grok.example.invalid/h",
+					"T": testToken,
+				}),
+			},
+			want: "valid https URL",
 		},
 	}
 

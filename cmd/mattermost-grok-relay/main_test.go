@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -85,5 +86,32 @@ func TestRun(t *testing.T) {
 				t.Fatalf("stderr = %q, want substring %q", stderr.String(), tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunWithRelayConfigJSONEnv(t *testing.T) {
+	t.Setenv("RELAY_CONFIG_JSON", `{"bots":[{"id":"env-bot","url_env":"RELAY_TEST_WEBHOOK_URL","token_env":"RELAY_TEST_TOKEN"}]}`)
+
+	var stdout, stderr bytes.Buffer
+	lookup := func(key string) (string, bool) {
+		switch key {
+		case "RELAY_TEST_TOKEN":
+			return "test-token-value", true
+		case "RELAY_TEST_WEBHOOK_URL":
+			return "https://grok.example.invalid/hook/test", true
+		default:
+			return os.LookupEnv(key)
+		}
+	}
+	code := run([]string{"mattermost-grok-relay"}, &stdout, &stderr, lookup)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "relay logic is not implemented yet") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	leak := "https://grok.example.invalid/hook/test"
+	if strings.Contains(stdout.String(), leak) || strings.Contains(stderr.String(), leak) {
+		t.Fatalf("output leaked webhook URL")
 	}
 }
