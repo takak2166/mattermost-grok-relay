@@ -27,10 +27,11 @@ type rawConfig struct {
 }
 
 type rawBot struct {
-	ID         string `json:"id"`
-	WebhookURL string `json:"webhook_url"`
-	TokenEnv   string `json:"token_env"`
-	TokenFile  string `json:"token_file"`
+	ID        string `json:"id"`
+	URLEnv    string `json:"url_env"`
+	URLFile   string `json:"url_file"`
+	TokenEnv  string `json:"token_env"`
+	TokenFile string `json:"token_file"`
 }
 
 // LoadOptions selects where configuration and secrets are read from.
@@ -133,12 +134,24 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 	}
 	seen[id] = struct{}{}
 
-	webhook := strings.TrimSpace(entry.WebhookURL)
+	urlEnv := strings.TrimSpace(entry.URLEnv)
+	urlFile := strings.TrimSpace(entry.URLFile)
+	switch {
+	case urlEnv == "" && urlFile == "":
+		return Bot{}, fmt.Errorf("%s: url_env or url_file is required", prefix)
+	case urlEnv != "" && urlFile != "":
+		return Bot{}, fmt.Errorf("%s: specify only one of url_env or url_file", prefix)
+	}
+
+	webhook, err := loadEnvOrFile(urlEnv, urlFile, opts, "url")
+	if err != nil {
+		return Bot{}, fmt.Errorf("%s: %w", prefix, err)
+	}
 	if webhook == "" {
-		return Bot{}, fmt.Errorf("%s: webhook_url is required", prefix)
+		return Bot{}, fmt.Errorf("%s: url value is empty", prefix)
 	}
 	if err := validateWebhookURL(webhook); err != nil {
-		return Bot{}, fmt.Errorf("%s: %w", prefix, err)
+		return Bot{}, fmt.Errorf("%s (id %q): %w", prefix, id, err)
 	}
 
 	tokenEnv := strings.TrimSpace(entry.TokenEnv)
@@ -150,7 +163,7 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 		return Bot{}, fmt.Errorf("%s: specify only one of token_env or token_file", prefix)
 	}
 
-	token, err := loadToken(tokenEnv, tokenFile, opts)
+	token, err := loadEnvOrFile(tokenEnv, tokenFile, opts, "token")
 	if err != nil {
 		return Bot{}, fmt.Errorf("%s: %w", prefix, err)
 	}
@@ -168,23 +181,23 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 func validateWebhookURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
-		return fmt.Errorf("webhook_url must be a valid https URL")
+		return fmt.Errorf("url value must be a valid https URL with a hostname")
 	}
 	return nil
 }
 
-func loadToken(tokenEnv, tokenFile string, opts LoadOptions) (string, error) {
-	if tokenEnv != "" {
-		value, ok := opts.LookupEnv(tokenEnv)
+func loadEnvOrFile(envName, filePath string, opts LoadOptions, kind string) (string, error) {
+	if envName != "" {
+		value, ok := opts.LookupEnv(envName)
 		if !ok || strings.TrimSpace(value) == "" {
-			return "", fmt.Errorf("environment variable %q is missing or empty", tokenEnv)
+			return "", fmt.Errorf("environment variable %q is missing or empty", envName)
 		}
 		return strings.TrimSpace(value), nil
 	}
 
-	data, err := opts.ReadFile(tokenFile)
+	data, err := opts.ReadFile(filePath)
 	if err != nil {
-		return "", fmt.Errorf("read token file %q: %w", tokenFile, err)
+		return "", fmt.Errorf("read %s file %q: %w", kind, filePath, err)
 	}
 	return strings.TrimSpace(string(data)), nil
 }

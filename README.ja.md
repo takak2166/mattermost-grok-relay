@@ -15,16 +15,17 @@ Mattermost と Grok Bot をつなぐ中継サービス（relay）の Go 実装�
 
 ## 設定
 
-Bot の対応表は JSON（ファイルまたは環境変数）で定義します。`bots` 配列に Mattermost Bot ユーザーごとに 1 要素追加するだけで Bot を増やせます。トークンはファイルに書きません。
+Bot の対応表は JSON（ファイルまたは環境変数）で定義します。`bots` 配列に Mattermost Bot ユーザーごとに 1 要素追加するだけで Bot を増やせます。ファイル本体に秘密情報は書かず、git 管理できます。
 
 | フィールド | 説明 |
 | --- | --- |
 | `id` | Mattermost Bot ユーザー識別子（重複不可） |
-| `webhook_url` | その Bot 向け Grok inbound webhook URL |
+| `url_env` | Grok inbound webhook URL を入れた環境変数名 |
+| `url_file` | webhook URL が書かれたファイルパス（Secret マウント等） |
 | `token_env` | Bot トークンを入れた環境変数名 |
 | `token_file` | Bot トークンが書かれたファイルパス（Secret マウント等） |
 
-各 Bot では `token_env` と `token_file` のどちらか一方だけを指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
+各 Bot では `url_env` / `url_file` のどちらか一方、`token_env` / `token_file` のどちらか一方を指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
 
 サンプル: `internal/config/testdata/example.json`
 

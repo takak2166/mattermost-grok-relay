@@ -58,12 +58,22 @@ func TestRun(t *testing.T) {
 			t.Parallel()
 			var stdout, stderr bytes.Buffer
 			lookup := func(key string) (string, bool) {
-				if key == "RELAY_TEST_TOKEN" {
+				switch key {
+				case "RELAY_TEST_TOKEN":
 					return "test-token-value", true
+				case "RELAY_TEST_WEBHOOK_URL":
+					return "https://grok.example.invalid/hook/test", true
+				default:
+					return "", false
 				}
-				return "", false
 			}
 			code := run(tt.args, &stdout, &stderr, lookup)
+			if tt.name == "config loaded then relay placeholder" {
+				leak := "https://grok.example.invalid/hook/test"
+				if strings.Contains(stdout.String(), leak) || strings.Contains(stderr.String(), leak) {
+					t.Fatalf("output leaked webhook URL")
+				}
+			}
 			if code != tt.wantCode {
 				t.Fatalf("exit code = %d, want %d", code, tt.wantCode)
 			}
