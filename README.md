@@ -33,7 +33,7 @@ Use exactly one of `url_env` or `url_file`, and exactly one of `token_env` or `t
 
 - Each bot user in the mapping table gets its own WebSocket connection.
 - **Direct messages** (`channel_type` `D`) are accepted unless the post is from the bot itself.
-- **Open, private, and group channels** (`O`, `P`, `G`) are accepted only when the posted event’s `mentions` field (JSON-encoded user ID array) includes the bot’s user ID. Message-body matching is not used.
+- **Open, private, and group channels** (`O`, `P`, `G`) are accepted only when the posted event’s `mentions` field (JSON-encoded user ID array) includes the bot’s user ID. Message-body matching is not used. The field reflects server notification targets (including @channel expansion, keywords, and thread engagement where applicable), not only visible @handles in the message text. In **group messages** (`G`), Mattermost typically lists every channel member in `mentions`, so the relay receives all GM posts while the bot remains a member.
 - On disconnect or ping timeout, the relay reconnects with exponential backoff: **1s** initial delay, multiply by **2** each failure, **60s** cap. Backoff resets only after a connection stayed up for **60 seconds**; brief flaps keep the current backoff level.
 
 See `internal/config/testdata/example.json` for a sample.

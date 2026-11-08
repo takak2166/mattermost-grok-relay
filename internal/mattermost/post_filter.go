@@ -68,6 +68,29 @@ func ParseMentionUserIDs(data map[string]any) []string {
 	}
 }
 
+// MentionsFieldMalformed reports whether data.mentions is present but could not be parsed.
+func MentionsFieldMalformed(data map[string]any) bool {
+	if data == nil {
+		return false
+	}
+	raw, ok := data["mentions"]
+	if !ok || raw == nil {
+		return false
+	}
+	switch v := raw.(type) {
+	case string:
+		if v == "" {
+			return false
+		}
+		var ids []string
+		return json.Unmarshal([]byte(v), &ids) != nil
+	case []string, []any:
+		return false
+	default:
+		return true
+	}
+}
+
 // ShouldRelayPost reports whether a post should be picked up for this bot (mention or DM).
 func ShouldRelayPost(botUserID, channelType string, post *model.Post, mentionIDs []string) bool {
 	if post == nil || post.DeleteAt != 0 {

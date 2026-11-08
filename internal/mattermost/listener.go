@@ -2,6 +2,7 @@ package mattermost
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -72,7 +73,7 @@ func (l *BotListener) Run(ctx context.Context) error {
 		runErr := l.consume(ctx, ws)
 		ws.Close()
 		backoff.RecordDisconnect(l.now().Sub(connectedAt))
-		if runErr != nil && runErr != context.Canceled {
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
 			return runErr
 		}
 		if err := ctx.Err(); err != nil {
@@ -91,10 +92,7 @@ func (l *BotListener) consume(ctx context.Context, ws WebSocket) error {
 		select {
 		case <-ctx.Done():
 			return context.Canceled
-		case _, ok := <-ws.PingTimeoutChannel():
-			if !ok {
-				return nil
-			}
+		case <-ws.PingTimeoutChannel():
 			return nil
 		case event, ok := <-ws.EventChannel():
 			if !ok {
@@ -116,6 +114,9 @@ func (l *BotListener) handleEvent(ctx context.Context, event *model.WebSocketEve
 	channelType, post, mentionIDs, err := ParsePostedEvent(event)
 	if err != nil {
 		return
+	}
+	if MentionsFieldMalformed(event.GetData()) {
+		l.Logger.Debug("mattermost posted event has malformed mentions field", "bot_id", l.BotID, "channel_type", channelType)
 	}
 	if !ShouldRelayPost(l.Identity.UserID, channelType, post, mentionIDs) {
 		return

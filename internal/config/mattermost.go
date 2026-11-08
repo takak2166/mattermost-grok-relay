@@ -29,5 +29,6 @@ func normalizeMattermostSiteURL(raw string) (string, error) {
 	if u.Path != "" && u.Path != "/" {
 		u.Path = strings.TrimRight(u.Path, "/")
 	}
+	u.RawPath = ""
 	return strings.TrimRight(u.String(), "/"), nil
 }

@@ -55,6 +55,7 @@ func TestParseMentionUserIDs(t *testing.T) {
 		{"malformed", map[string]any{"mentions": "not-json"}, nil},
 		{"missing", map[string]any{}, nil},
 		{"slice", map[string]any{"mentions": []any{"a", "b"}}, []string{"a", "b"}},
+		{"string slice", map[string]any{"mentions": []string{"a", "b"}}, []string{"a", "b"}},
 	}
 
 	for _, tt := range tests {
@@ -70,6 +71,19 @@ func TestParseMentionUserIDs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMentionsFieldMalformed(t *testing.T) {
+	t.Parallel()
+	if !MentionsFieldMalformed(map[string]any{"mentions": "not-json"}) {
+		t.Fatal("expected malformed")
+	}
+	if MentionsFieldMalformed(map[string]any{"mentions": `["u1"]`}) {
+		t.Fatal("valid json should not be malformed")
+	}
+	if MentionsFieldMalformed(map[string]any{}) {
+		t.Fatal("missing field is not malformed")
 	}
 }
 

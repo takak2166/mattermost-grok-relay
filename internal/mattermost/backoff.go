@@ -35,6 +35,12 @@ func (b *Backoff) Reset() {
 }
 
 func (b *Backoff) Next() time.Duration {
+	if b.wait == 0 {
+		if b.Initial == 0 {
+			b.Initial = time.Second
+		}
+		b.wait = b.Initial
+	}
 	d := b.wait
 	b.wait = time.Duration(float64(b.wait) * b.Factor)
 	if b.wait > b.Cap {
