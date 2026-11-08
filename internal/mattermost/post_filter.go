@@ -3,35 +3,73 @@ package mattermost
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
-// ParsePostedEvent extracts channel type and post from a posted websocket event.
-func ParsePostedEvent(event *model.WebSocketEvent) (channelType string, post *model.Post, err error) {
+// ParsePostedEvent extracts channel type, post, and mention user IDs from a posted event.
+// Mention IDs come from data.mentions (JSON-encoded string array per Mattermost websocket API).
+func ParsePostedEvent(event *model.WebSocketEvent) (channelType string, post *model.Post, mentionIDs []string, err error) {
 	if event == nil {
-		return "", nil, fmt.Errorf("mattermost: nil event")
+		return "", nil, nil, fmt.Errorf("mattermost: nil event")
 	}
 	if event.EventType() != model.WebsocketEventPosted {
-		return "", nil, fmt.Errorf("mattermost: not a posted event")
+		return "", nil, nil, fmt.Errorf("mattermost: not a posted event")
 	}
 	data := event.GetData()
 	ct, _ := data["channel_type"].(string)
 	rawPost, ok := data["post"].(string)
 	if !ok || rawPost == "" {
-		return "", nil, fmt.Errorf("mattermost: posted event missing post payload")
+		return "", nil, nil, fmt.Errorf("mattermost: posted event missing post payload")
 	}
 	post = &model.Post{}
 	if err := json.Unmarshal([]byte(rawPost), post); err != nil {
-		return "", nil, fmt.Errorf("mattermost: decode post: %w", err)
+		return "", nil, nil, fmt.Errorf("mattermost: decode post: %w", err)
 	}
-	return ct, post, nil
+	mentionIDs = ParseMentionUserIDs(data)
+	return ct, post, mentionIDs, nil
+}
+
+// ParseMentionUserIDs reads data.mentions from a posted websocket event.
+// Server sends a JSON-encoded array of user IDs as a string; missing or malformed data is treated as no mentions.
+func ParseMentionUserIDs(data map[string]any) []string {
+	if data == nil {
+		return nil
+	}
+	raw, ok := data["mentions"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		var ids []string
+		if err := json.Unmarshal([]byte(v), &ids); err != nil {
+			return nil
+		}
+		return ids
+	case []string:
+		return v
+	case []any:
+		ids := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				ids = append(ids, s)
+			}
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		return ids
+	default:
+		return nil
+	}
 }
 
 // ShouldRelayPost reports whether a post should be picked up for this bot (mention or DM).
-func ShouldRelayPost(botUserID, botUsername, channelType string, post *model.Post) bool {
+func ShouldRelayPost(botUserID, channelType string, post *model.Post, mentionIDs []string) bool {
 	if post == nil || post.DeleteAt != 0 {
 		return false
 	}
@@ -44,17 +82,21 @@ func ShouldRelayPost(botUserID, botUsername, channelType string, post *model.Pos
 	if channelType == string(model.ChannelTypeDirect) {
 		return true
 	}
-	if channelType == string(model.ChannelTypeOpen) || channelType == string(model.ChannelTypePrivate) {
-		return messageMentionsUsername(post.Message, botUsername)
-	}
-	return false
-}
-
-func messageMentionsUsername(message, username string) bool {
-	username = strings.TrimSpace(username)
-	if username == "" {
+	switch channelType {
+	case string(model.ChannelTypeOpen),
+		string(model.ChannelTypePrivate),
+		string(model.ChannelTypeGroup):
+		return mentionIncludesBot(mentionIDs, botUserID)
+	default:
 		return false
 	}
-	pattern := regexp.MustCompile(`(?i)(?:^|[^\w@])@` + regexp.QuoteMeta(username) + `\b`)
-	return pattern.MatchString(message)
+}
+
+func mentionIncludesBot(mentionIDs []string, botUserID string) bool {
+	for _, id := range mentionIDs {
+		if id == botUserID {
+			return true
+		}
+	}
+	return false
 }

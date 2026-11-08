@@ -27,13 +27,14 @@ Bot routing is defined in JSON (file or inline env). Add one object under `bots`
 
 Use exactly one of `url_env` or `url_file`, and exactly one of `token_env` or `token_file`, per bot. Set `RELAY_CONFIG` to a file path, `RELAY_CONFIG_JSON` for inline JSON, or pass `-config path`.
 
-Set `RELAY_MATTERMOST_URL` to the Mattermost site base URL (`https://…`). The relay opens one official Go client WebSocket (`Client4` / `WebSocketClient4`) per bot using that site URL and each bot’s token.
+**Required environment variable:** `RELAY_MATTERMOST_URL` — Mattermost site base URL (`https://…`, or `https://…/subpath` when served under a path). The relay uses the official Go client (`Client4` / `WebSocketClient4`) with that URL for REST and WebSocket.
 
 ### WebSocket receive and reconnect
 
 - Each bot user in the mapping table gets its own WebSocket connection.
-- Only channel posts that **@mention** the bot user and **direct messages** are accepted; other posts are ignored.
-- On disconnect or ping timeout, the relay reconnects with exponential backoff: **1s** initial delay, multiply by **2** each failure, **60s** cap; backoff resets after a successful connection.
+- **Direct messages** (`channel_type` `D`) are accepted unless the post is from the bot itself.
+- **Open, private, and group channels** (`O`, `P`, `G`) are accepted only when the posted event’s `mentions` field (JSON-encoded user ID array) includes the bot’s user ID. Message-body matching is not used.
+- On disconnect or ping timeout, the relay reconnects with exponential backoff: **1s** initial delay, multiply by **2** each failure, **60s** cap. Backoff resets only after a connection stayed up for **60 seconds**; brief flaps keep the current backoff level.
 
 See `internal/config/testdata/example.json` for a sample.
 

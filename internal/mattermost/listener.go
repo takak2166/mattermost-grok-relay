@@ -3,6 +3,7 @@ package mattermost
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -24,6 +25,7 @@ type BotListener struct {
 	Backoff   Backoff
 	OnPost    PostHandler
 	Logger    *slog.Logger
+	Now       func() time.Time
 }
 
 func (l *BotListener) Run(ctx context.Context) error {
@@ -55,7 +57,6 @@ func (l *BotListener) Run(ctx context.Context) error {
 				continue
 			}
 			l.Identity = identity
-			backoff.Reset()
 		}
 		ws, err := l.Dial(l.WsOrigin, l.Token)
 		if err != nil {
@@ -65,11 +66,12 @@ func (l *BotListener) Run(ctx context.Context) error {
 			}
 			continue
 		}
-		backoff.Reset()
 		l.Logger.Info("mattermost websocket connected", "bot_id", l.BotID)
+		connectedAt := l.now()
 
 		runErr := l.consume(ctx, ws)
 		ws.Close()
+		backoff.RecordDisconnect(l.now().Sub(connectedAt))
 		if runErr != nil && runErr != context.Canceled {
 			return runErr
 		}
@@ -103,12 +105,19 @@ func (l *BotListener) consume(ctx context.Context, ws WebSocket) error {
 	}
 }
 
+func (l *BotListener) now() time.Time {
+	if l.Now != nil {
+		return l.Now()
+	}
+	return time.Now()
+}
+
 func (l *BotListener) handleEvent(ctx context.Context, event *model.WebSocketEvent) {
-	channelType, post, err := ParsePostedEvent(event)
+	channelType, post, mentionIDs, err := ParsePostedEvent(event)
 	if err != nil {
 		return
 	}
-	if !ShouldRelayPost(l.Identity.UserID, l.Identity.Username, channelType, post) {
+	if !ShouldRelayPost(l.Identity.UserID, channelType, post, mentionIDs) {
 		return
 	}
 	if l.OnPost != nil {

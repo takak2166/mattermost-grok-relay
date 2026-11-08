@@ -29,7 +29,7 @@ func (h *Hub) Run(ctx context.Context) error {
 	if h.ResolveID == nil {
 		h.ResolveID = ResolveBotIdentity
 	}
-	wsOrigin, err := WebSocketOrigin(h.SiteURL)
+	wsOrigin, err := WebSocketSiteURL(h.SiteURL)
 	if err != nil {
 		return err
 	}

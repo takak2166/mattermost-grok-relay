@@ -24,12 +24,14 @@ func (m *mockWS) EventChannel() <-chan *model.WebSocketEvent {
 }
 func (m *mockWS) PingTimeoutChannel() <-chan bool { return m.ping }
 
-func makePostedEvent(channelType, message, userID string) *model.WebSocketEvent {
-	post := &model.Post{Id: "p1", UserId: userID, Message: message}
+func makePostedEvent(channelType string, mentionIDs []string, userID string) *model.WebSocketEvent {
+	post := &model.Post{Id: "p1", UserId: userID, Message: "hi"}
 	raw, _ := json.Marshal(post)
+	mentions, _ := json.Marshal(mentionIDs)
 	ev := model.NewWebSocketEvent(model.WebsocketEventPosted, "", "", "", nil, "")
 	ev.Add("channel_type", channelType)
 	ev.Add("post", string(raw))
+	ev.Add("mentions", string(mentions))
 	return ev
 }
 
@@ -57,13 +59,19 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 		BotID:    "bot-1",
 		Identity: BotIdentity{UserID: "bot-1", Username: "relaybot"},
 		SiteURL:  "https://example.invalid",
-		WsOrigin: "ws://example.invalid",
+		WsOrigin: "wss://example.invalid",
 		Token:    "token",
 		Dial:     dial,
 		ResolveID: func(_, _, _ string) (BotIdentity, error) {
 			return BotIdentity{UserID: "bot-1", Username: "relaybot"}, nil
 		},
-		Backoff: Backoff{Initial: 10 * time.Millisecond, Factor: 2, Cap: 20 * time.Millisecond, wait: 10 * time.Millisecond},
+		Backoff: Backoff{
+			Initial:           10 * time.Millisecond,
+			Factor:            2,
+			Cap:               20 * time.Millisecond,
+			StableBeforeReset: time.Minute,
+			wait:              10 * time.Millisecond,
+		},
 		OnPost: func(_ context.Context, botID string, post *model.Post) {
 			accepted <- post.Id
 		},
@@ -76,7 +84,7 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 		_ = l.Run(ctx)
 	}()
 
-	secondWS.events <- makePostedEvent(string(model.ChannelTypeOpen), "hi @relaybot", "user-2")
+	secondWS.events <- makePostedEvent(string(model.ChannelTypeOpen), []string{"bot-1"}, "user-2")
 	select {
 	case id := <-accepted:
 		if id != "p1" {
@@ -90,4 +98,46 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 		t.Fatalf("expected at least 2 dials, got %d", dials.Load())
 	}
 	cancel()
+}
+
+func TestBotListenerFlapDoesNotResetBackoffImmediately(t *testing.T) {
+	t.Parallel()
+	var slept []time.Duration
+	b := NewBackoff()
+	b.StableBeforeReset = time.Minute
+	b.wait = time.Second
+	b.sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
+
+	ws := &mockWS{events: make(chan *model.WebSocketEvent), ping: make(chan bool, 1)}
+	close(ws.events)
+
+	l := &BotListener{
+		BotID:    "bot-1",
+		Identity: BotIdentity{UserID: "bot-1"},
+		WsOrigin: "wss://example.invalid",
+		Token:    "token",
+		Dial:     func(_, _ string) (WebSocket, error) { return ws, nil },
+		Backoff:  b,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = l.Run(ctx)
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	<-done
+
+	if len(slept) == 0 {
+		t.Fatal("expected backoff sleep after flap")
+	}
+	if slept[0] != time.Second {
+		t.Fatalf("first sleep = %v, want 1s (not reset after short session)", slept[0])
+	}
 }

@@ -27,13 +27,14 @@ Bot の対応表は JSON（ファイルまたは環境変数）で定義しま�
 
 各 Bot では `url_env` / `url_file` のどちらか一方、`token_env` / `token_file` のどちらか一方を指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
 
-`RELAY_MATTERMOST_URL` に Mattermost サイトのベース URL（`https://…`）を設定します。公式 Go クライアントの WebSocket（`Client4` / `WebSocketClient4`）で、Bot ごとに 1 接続します。
+**必須環境変数:** `RELAY_MATTERMOST_URL` — Mattermost サイトのベース URL（`https://…`。サブパス配下の場合は `https://…/subpath`）。公式 Go クライアント（`Client4` / `WebSocketClient4`）が REST と WebSocket の両方にこの URL を使います。
 
 ### WebSocket 受信と再接続
 
 - 対応表の Bot ユーザーごとに独立した WebSocket 接続を張ります。
-- チャンネル投稿は Bot への **@メンション**、**DM** のみ受け付け、それ以外は無視します。
-- 切断や ping タイムアウト後は指数バックオフで再接続します（初回 **1 秒**、失敗ごとに **2 倍**、上限 **60 秒**）。接続成功でバックオフはリセットします。
+- **DM**（`channel_type` `D`）は、Bot 自身の投稿以外を受け付けます。
+- **オープン・プライベート・グループ**（`O` / `P` / `G`）は、posted イベントの `mentions`（ユーザー ID の JSON 配列）に Bot のユーザー ID が含まれる場合のみ受け付けます。本文の `@` 文字列は見ません。
+- 切断や ping タイムアウト後は指数バックオフで再接続します（初回 **1 秒**、失敗ごとに **2 倍**、上限 **60 秒**）。バックオフのリセットは、接続が **60 秒** 以上維持されたときだけ行います（短時間の切断ではリセットしません）。
 
 サンプル: `internal/config/testdata/example.json`
 

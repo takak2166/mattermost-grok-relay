@@ -32,3 +32,18 @@ func TestBackoffReset(t *testing.T) {
 		t.Fatalf("after reset = %v", got)
 	}
 }
+
+func TestBackoffRecordDisconnect(t *testing.T) {
+	t.Parallel()
+	b := NewBackoff()
+	b.Next()
+	b.Next()
+	b.RecordDisconnect(30 * time.Second)
+	if b.wait == time.Second {
+		t.Fatal("short disconnect should not reset backoff")
+	}
+	b.RecordDisconnect(60 * time.Second)
+	if b.wait != time.Second {
+		t.Fatalf("stable disconnect should reset, wait=%v", b.wait)
+	}
+}
