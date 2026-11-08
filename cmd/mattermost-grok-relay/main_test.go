@@ -33,13 +33,13 @@ func TestRun(t *testing.T) {
 			wantStderr: "config load failed:",
 		},
 		{
-			name: "config loaded then relay placeholder",
+			name: "config loaded without mattermost url",
 			args: []string{
 				"mattermost-grok-relay",
 				"-config", "testdata/minimal.json",
 			},
 			wantCode:        1,
-			wantStderr:      "relay logic is not implemented yet",
+			wantStderr:      "RELAY_MATTERMOST_URL is required",
 			assertNoWebhook: "https://grok.example.invalid/hook/test",
 		},
 		{
@@ -107,7 +107,7 @@ func TestRunWithRelayConfigJSONEnv(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "relay logic is not implemented yet") {
+	if !strings.Contains(stderr.String(), "RELAY_MATTERMOST_URL is required") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	leak := "https://grok.example.invalid/hook/test"

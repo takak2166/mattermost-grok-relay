@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -8,7 +9,10 @@ import (
 
 	"github.com/takak2166/mattermost-grok-relay/internal/app"
 	"github.com/takak2166/mattermost-grok-relay/internal/config"
+	"github.com/takak2166/mattermost-grok-relay/internal/relay"
 )
+
+var startRelay = relay.Run
 
 func main() {
 	os.Exit(run(os.Args, os.Stdout, os.Stderr, os.LookupEnv))
@@ -38,15 +42,27 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 	opts := config.LoadOptions{LookupEnv: lookupEnv}
 	opts.ApplySources(*configPath)
 
-	if _, err := config.Load(opts); err != nil {
+	cfg, err := config.Load(opts)
+	if err != nil {
 		if _, werr := fmt.Fprintf(stderr, "config load failed: %s\n", err); werr != nil {
 			return 1
 		}
 		return 1
 	}
 
-	if _, err := fmt.Fprintln(stderr, "relay logic is not implemented yet; use -version to print the build version"); err != nil {
+	siteURL, err := config.MattermostServerURL(lookupEnv)
+	if err != nil {
+		if _, werr := fmt.Fprintf(stderr, "config load failed: %s\n", err); werr != nil {
+			return 1
+		}
 		return 1
 	}
-	return 1
+
+	if err := startRelay(context.Background(), siteURL, cfg); err != nil {
+		if _, werr := fmt.Fprintf(stderr, "relay stopped: %s\n", err); werr != nil {
+			return 1
+		}
+		return 1
+	}
+	return 0
 }

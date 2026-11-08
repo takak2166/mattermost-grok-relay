@@ -27,6 +27,14 @@ Bot の対応表は JSON（ファイルまたは環境変数）で定義しま�
 
 各 Bot では `url_env` / `url_file` のどちらか一方、`token_env` / `token_file` のどちらか一方を指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
 
+`RELAY_MATTERMOST_URL` に Mattermost サイトのベース URL（`https://…`）を設定します。公式 Go クライアントの WebSocket（`Client4` / `WebSocketClient4`）で、Bot ごとに 1 接続します。
+
+### WebSocket 受信と再接続
+
+- 対応表の Bot ユーザーごとに独立した WebSocket 接続を張ります。
+- チャンネル投稿は Bot への **@メンション**、**DM** のみ受け付け、それ以外は無視します。
+- 切断や ping タイムアウト後は指数バックオフで再接続します（初回 **1 秒**、失敗ごとに **2 倍**、上限 **60 秒**）。接続成功でバックオフはリセットします。
+
 サンプル: `internal/config/testdata/example.json`
 
 ## 開発
@@ -43,4 +51,4 @@ docker build -t mattermost-grok-relay:local .
 docker run --rm mattermost-grok-relay:local -version
 ```
 
-現状のイメージは **`-version` でバージョン表示して終了するだけ** です（常駐プロセスにはなりません）。relay の常時接続ロジックは後続で入れ、デフォルト CMD もそのとき更新します。
+`-version` 以外では設定を読み込み、Bot ごとの WebSocket を維持する常駐 relay として動作します（停止シグナルで終了）。

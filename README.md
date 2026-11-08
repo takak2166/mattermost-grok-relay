@@ -27,6 +27,14 @@ Bot routing is defined in JSON (file or inline env). Add one object under `bots`
 
 Use exactly one of `url_env` or `url_file`, and exactly one of `token_env` or `token_file`, per bot. Set `RELAY_CONFIG` to a file path, `RELAY_CONFIG_JSON` for inline JSON, or pass `-config path`.
 
+Set `RELAY_MATTERMOST_URL` to the Mattermost site base URL (`https://…`). The relay opens one official Go client WebSocket (`Client4` / `WebSocketClient4`) per bot using that site URL and each bot’s token.
+
+### WebSocket receive and reconnect
+
+- Each bot user in the mapping table gets its own WebSocket connection.
+- Only channel posts that **@mention** the bot user and **direct messages** are accepted; other posts are ignored.
+- On disconnect or ping timeout, the relay reconnects with exponential backoff: **1s** initial delay, multiply by **2** each failure, **60s** cap; backoff resets after a successful connection.
+
 See `internal/config/testdata/example.json` for a sample.
 
 ## Development
@@ -43,4 +51,4 @@ docker build -t mattermost-grok-relay:local .
 docker run --rm mattermost-grok-relay:local -version
 ```
 
-The image **prints the version with `-version` and exits**; it is not a long-running process yet. Always-on WebSocket relay logic and the default container command will change when that work lands.
+Without `-version`, the container runs the relay: it loads configuration and maintains bot WebSocket connections until it receives a stop signal.
