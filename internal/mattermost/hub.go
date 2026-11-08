@@ -2,7 +2,6 @@ package mattermost
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 
@@ -36,11 +35,7 @@ func (h *Hub) Run(ctx context.Context) error {
 	}
 	h.WsOrigin = wsOrigin
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	var wg sync.WaitGroup
-	errCh := make(chan error, len(h.Bots))
 	for _, bot := range h.Bots {
 		wg.Add(1)
 		go func(bot config.Bot) {
@@ -55,25 +50,10 @@ func (h *Hub) Run(ctx context.Context) error {
 				OnPost:    h.OnPost,
 				Logger:    h.Logger,
 			}
-			if err := listener.Run(ctx); err != nil && err != context.Canceled {
-				errCh <- fmt.Errorf("bot %q: %w", bot.ID, err)
-			}
+			_ = listener.Run(ctx)
 		}(bot)
 	}
 
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		<-done
-		return ctx.Err()
-	case err := <-errCh:
-		return err
-	case <-done:
-		return nil
-	}
+	wg.Wait()
+	return ctx.Err()
 }
