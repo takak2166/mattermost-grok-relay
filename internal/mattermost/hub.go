@@ -8,6 +8,8 @@ import (
 	"github.com/takak2166/mattermost-grok-relay/internal/config"
 )
 
+type botListenerRunFunc func(context.Context, *BotListener) error
+
 // Hub starts one websocket listener per configured bot.
 type Hub struct {
 	SiteURL   string
@@ -17,6 +19,9 @@ type Hub struct {
 	OnPost    PostHandler
 	Logger    *slog.Logger
 	ResolveID func(siteURL, token, userID string) (BotIdentity, error)
+
+	// runListener is used in tests to inject listener exit behavior.
+	runListener botListenerRunFunc
 }
 
 func (h *Hub) Run(ctx context.Context) error {
@@ -50,7 +55,17 @@ func (h *Hub) Run(ctx context.Context) error {
 				OnPost:    h.OnPost,
 				Logger:    h.Logger,
 			}
-			_ = listener.Run(ctx)
+			run := h.runListener
+			if run == nil {
+				run = func(ctx context.Context, l *BotListener) error {
+					return l.Run(ctx)
+				}
+			}
+			if err := run(ctx, listener); err != nil {
+				if ok, exitClass := botListenerExitClass(err); ok {
+					logBotListenerExit(h.Logger, bot.ID, exitClass)
+				}
+			}
 		}(bot)
 	}
 
