@@ -1,9 +1,14 @@
 package mattermost
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,5 +144,114 @@ func TestBotListenerFlapDoesNotResetBackoffImmediately(t *testing.T) {
 	}
 	if slept[0] != time.Second {
 		t.Fatalf("first sleep = %v, want 1s (not reset after short session)", slept[0])
+	}
+}
+
+func TestBotListenerIdentityFailureLogsRedacted(t *testing.T) {
+	t.Parallel()
+	sensitive := fmt.Errorf("mattermost: get me: %w", &url.Error{
+		Op:  "Get",
+		URL: "https://fake.example.invalid/api/v4/users/me",
+		Err: errors.New("authorization bearer fake-bot-token-value"),
+	})
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	l := &BotListener{
+		BotID:   "bot-config-1",
+		SiteURL: "https://fake.example.invalid",
+		Logger:  logger,
+		ResolveID: func(_, _, _ string) (BotIdentity, error) {
+			return BotIdentity{}, sensitive
+		},
+		Backoff: Backoff{
+			Initial:           time.Millisecond,
+			Factor:            1,
+			Cap:               time.Millisecond,
+			StableBeforeReset: time.Minute,
+			wait:              time.Millisecond,
+			sleep:             func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
+		},
+		Dial: func(_, _ string) (WebSocket, error) {
+			t.Fatal("dial must not run before identity resolves")
+			return nil, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = l.Run(ctx)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	<-done
+
+	out := buf.String()
+	for _, forbidden := range []string{"https://", "fake-bot-token", "bearer", "users/me"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("identity failure log leaked %q: %s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, failClassIdentityTransport) {
+		t.Fatalf("expected fail_class in log: %s", out)
+	}
+}
+
+func TestBotListenerDialFailureLogsRedacted(t *testing.T) {
+	t.Parallel()
+	sensitive := fmt.Errorf("mattermost: websocket dial: %w", &url.Error{
+		Op:  "GET",
+		URL: "wss://fake.example.invalid/api/v4/websocket",
+		Err: errors.New("unexpected EOF"),
+	})
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	var dials atomic.Int32
+
+	l := &BotListener{
+		BotID:    "bot-config-2",
+		Identity: BotIdentity{UserID: "bot-config-2", Username: "relaybot"},
+		Logger:   logger,
+		Dial: func(_, _ string) (WebSocket, error) {
+			dials.Add(1)
+			return nil, sensitive
+		},
+		Backoff: Backoff{
+			Initial:           time.Millisecond,
+			Factor:            1,
+			Cap:               time.Millisecond,
+			StableBeforeReset: time.Minute,
+			wait:              time.Millisecond,
+			sleep:             func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = l.Run(ctx)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	<-done
+
+	if dials.Load() < 1 {
+		t.Fatal("expected at least one dial attempt")
+	}
+	out := buf.String()
+	for _, forbidden := range []string{"wss://", "fake.example", "unexpected EOF"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("dial failure log leaked %q: %s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, failClassWebSocketTransport) {
+		t.Fatalf("expected fail_class in log: %s", out)
 	}
 }

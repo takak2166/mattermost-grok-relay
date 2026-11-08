@@ -51,7 +51,7 @@ func (l *BotListener) Run(ctx context.Context) error {
 		if l.Identity.UserID == "" {
 			identity, err := l.ResolveID(l.SiteURL, l.Token, l.BotID)
 			if err != nil {
-				l.Logger.Warn("mattermost resolve bot identity failed", "bot_id", l.BotID, "error", err)
+				logBotListenerWarn(l.Logger, l.BotID, "mattermost resolve bot identity failed", classifyIdentityResolveFail(err))
 				if err := backoff.Sleep(ctx); err != nil {
 					return err
 				}
@@ -61,7 +61,7 @@ func (l *BotListener) Run(ctx context.Context) error {
 		}
 		ws, err := l.Dial(l.WsOrigin, l.Token)
 		if err != nil {
-			l.Logger.Warn("mattermost websocket connect failed", "bot_id", l.BotID, "error", err)
+			logBotListenerWarn(l.Logger, l.BotID, "mattermost websocket connect failed", classifyWebSocketDialFail(err))
 			if err := backoff.Sleep(ctx); err != nil {
 				return err
 			}
