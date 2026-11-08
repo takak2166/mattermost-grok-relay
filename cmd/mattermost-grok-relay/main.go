@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -59,6 +60,9 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 	}
 
 	if err := startRelay(context.Background(), siteURL, cfg); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return 0
+		}
 		if _, werr := fmt.Fprintf(stderr, "relay stopped: %s\n", err); werr != nil {
 			return 1
 		}

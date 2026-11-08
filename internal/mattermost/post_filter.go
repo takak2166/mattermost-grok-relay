@@ -38,6 +38,9 @@ func ShouldRelayPost(botUserID, botUsername, channelType string, post *model.Pos
 	if post.UserId == botUserID {
 		return false
 	}
+	if post.Type != "" && post.Type != model.PostTypeDefault {
+		return false
+	}
 	if channelType == string(model.ChannelTypeDirect) {
 		return true
 	}
@@ -52,6 +55,6 @@ func messageMentionsUsername(message, username string) bool {
 	if username == "" {
 		return false
 	}
-	pattern := regexp.MustCompile(`(?i)@` + regexp.QuoteMeta(username) + `\b`)
+	pattern := regexp.MustCompile(`(?i)(?:^|[^\w@])@` + regexp.QuoteMeta(username) + `\b`)
 	return pattern.MatchString(message)
 }

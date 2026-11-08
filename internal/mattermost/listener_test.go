@@ -56,10 +56,14 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 	l := &BotListener{
 		BotID:    "bot-1",
 		Identity: BotIdentity{UserID: "bot-1", Username: "relaybot"},
+		SiteURL:  "https://example.invalid",
 		WsOrigin: "ws://example.invalid",
 		Token:    "token",
 		Dial:     dial,
-		Backoff:  Backoff{Initial: 10 * time.Millisecond, Factor: 2, Cap: 20 * time.Millisecond, wait: 10 * time.Millisecond},
+		ResolveID: func(_, _, _ string) (BotIdentity, error) {
+			return BotIdentity{UserID: "bot-1", Username: "relaybot"}, nil
+		},
+		Backoff: Backoff{Initial: 10 * time.Millisecond, Factor: 2, Cap: 20 * time.Millisecond, wait: 10 * time.Millisecond},
 		OnPost: func(_ context.Context, botID string, post *model.Post) {
 			accepted <- post.Id
 		},

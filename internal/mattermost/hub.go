@@ -36,31 +36,29 @@ func (h *Hub) Run(ctx context.Context) error {
 	}
 	h.WsOrigin = wsOrigin
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(h.Bots))
 	for _, bot := range h.Bots {
-		bot := bot
 		wg.Add(1)
-		go func() {
+		go func(bot config.Bot) {
 			defer wg.Done()
-			identity, err := h.ResolveID(h.SiteURL, bot.Token.Value(), bot.ID)
-			if err != nil {
-				errCh <- fmt.Errorf("bot %q: %w", bot.ID, err)
-				return
-			}
 			listener := &BotListener{
-				BotID:    bot.ID,
-				Identity: identity,
-				WsOrigin: wsOrigin,
-				Token:    bot.Token.Value(),
-				Dial:     h.Dial,
-				OnPost:   h.OnPost,
-				Logger:   h.Logger,
+				BotID:     bot.ID,
+				SiteURL:   h.SiteURL,
+				WsOrigin:  wsOrigin,
+				Token:     bot.Token.Value(),
+				Dial:      h.Dial,
+				ResolveID: h.ResolveID,
+				OnPost:    h.OnPost,
+				Logger:    h.Logger,
 			}
 			if err := listener.Run(ctx); err != nil && err != context.Canceled {
 				errCh <- fmt.Errorf("bot %q: %w", bot.ID, err)
 			}
-		}()
+		}(bot)
 	}
 
 	done := make(chan struct{})

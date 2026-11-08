@@ -14,14 +14,16 @@ type PostHandler func(ctx context.Context, botID string, post *model.Post)
 // BotListener maintains one WebSocket connection for a single bot user.
 type BotListener struct {
 	BotID    string
+	SiteURL  string
 	Identity BotIdentity
 	WsOrigin string
 	Token    string
 
-	Dial    DialWebSocket
-	Backoff Backoff
-	OnPost  PostHandler
-	Logger  *slog.Logger
+	Dial      DialWebSocket
+	ResolveID func(siteURL, token, userID string) (BotIdentity, error)
+	Backoff   Backoff
+	OnPost    PostHandler
+	Logger    *slog.Logger
 }
 
 func (l *BotListener) Run(ctx context.Context) error {
@@ -31,6 +33,9 @@ func (l *BotListener) Run(ctx context.Context) error {
 	if l.Logger == nil {
 		l.Logger = slog.Default()
 	}
+	if l.ResolveID == nil {
+		l.ResolveID = ResolveBotIdentity
+	}
 	backoff := l.Backoff
 	if backoff.Initial == 0 {
 		backoff = NewBackoff()
@@ -39,6 +44,18 @@ func (l *BotListener) Run(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if l.Identity.UserID == "" {
+			identity, err := l.ResolveID(l.SiteURL, l.Token, l.BotID)
+			if err != nil {
+				l.Logger.Warn("mattermost resolve bot identity failed", "bot_id", l.BotID, "error", err)
+				if err := backoff.Sleep(ctx); err != nil {
+					return err
+				}
+				continue
+			}
+			l.Identity = identity
+			backoff.Reset()
 		}
 		ws, err := l.Dial(l.WsOrigin, l.Token)
 		if err != nil {

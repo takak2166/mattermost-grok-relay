@@ -17,12 +17,12 @@ type BotIdentity struct {
 func ResolveBotIdentity(siteURL, token, wantUserID string) (BotIdentity, error) {
 	client := model.NewAPIv4Client(siteURL)
 	client.SetToken(token)
-	user, _, err := client.GetUser(context.Background(), wantUserID, "")
+	me, _, err := client.GetMe(context.Background(), "")
 	if err != nil {
-		return BotIdentity{}, fmt.Errorf("mattermost: get user %q: %w", wantUserID, err)
+		return BotIdentity{}, fmt.Errorf("mattermost: get me: %w", err)
 	}
-	if user.Id != wantUserID {
-		return BotIdentity{}, fmt.Errorf("mattermost: user id mismatch")
+	if me.Id != wantUserID {
+		return BotIdentity{}, fmt.Errorf("mattermost: token user does not match configured bot id")
 	}
-	return BotIdentity{UserID: user.Id, Username: user.Username}, nil
+	return BotIdentity{UserID: me.Id, Username: me.Username}, nil
 }
