@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/takak2166/mattermost-grok-relay/internal/config"
 )
@@ -104,6 +105,40 @@ func TestHubReturnsAllListenersStoppedWhenCtxAlive(t *testing.T) {
 	if !errors.Is(err, ErrAllListenersStopped) {
 		t.Fatalf("got %v want ErrAllListenersStopped", err)
 	}
+}
+
+func TestHubRunReturnsWithinOneSecondAfterCancelOnStallAcceptServer(t *testing.T) {
+	stall, err := newStallAcceptListener("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stall.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h := &Hub{
+		SiteURL:   stall.HTTPSiteURL(),
+		Bots:      []config.Bot{{ID: "bot-1"}},
+		Logger:    slog.Default(),
+		ResolveID: stubResolveIdentity,
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- h.Run(ctx)
+	}()
+	waitForTCPAccept(t, stall.accepted)
+	cancelAt := time.Now()
+	cancel()
+	var errRun error
+	select {
+	case errRun = <-done:
+	case <-time.After(cancelObservationMax):
+		t.Fatalf("Hub.Run did not return within %s after cancel", cancelObservationMax)
+	}
+	afterCancel := time.Since(cancelAt)
+	if !errors.Is(errRun, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", errRun)
+	}
+	t.Logf("measurement: hub-run-after-cancel elapsed=%s (from cancel, bound %s)", afterCancel.Round(time.Millisecond), cancelObservationMax)
 }
 
 func TestHubReturnsCancelWhenCtxCanceled(t *testing.T) {

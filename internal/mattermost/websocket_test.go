@@ -13,6 +13,55 @@ import (
 
 const cancelObservationMax = time.Second
 
+func stubResolveIdentity(context.Context, string, string, string) (BotIdentity, error) {
+	return BotIdentity{UserID: "u1", Username: "relaybot"}, nil
+}
+
+func waitForTCPAccept(t *testing.T, accepted <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("TCP accept did not occur before cancel")
+	}
+}
+
+func TestBotListenerRunReturnsWithinOneSecondAfterCancelOnStallAcceptServer(t *testing.T) {
+	stall, err := newStallAcceptListener("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stall.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	l := &BotListener{
+		BotID:     "bot-1",
+		Identity:  BotIdentity{UserID: "u1", Username: "relaybot"},
+		WsOrigin:  stall.WSOrigin(),
+		Token:     "token",
+		Logger:    slog.Default(),
+		ResolveID: stubResolveIdentity,
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- l.Run(ctx)
+	}()
+	waitForTCPAccept(t, stall.accepted)
+	cancelAt := time.Now()
+	cancel()
+	var errRun error
+	select {
+	case errRun = <-done:
+	case <-time.After(cancelObservationMax):
+		t.Fatalf("BotListener.Run did not return within %s after cancel", cancelObservationMax)
+	}
+	afterCancel := time.Since(cancelAt)
+	if !errors.Is(errRun, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", errRun)
+	}
+	t.Logf("measurement: listener-run-after-cancel elapsed=%s (from cancel, bound %s)", afterCancel.Round(time.Millisecond), cancelObservationMax)
+}
+
 func TestDefaultDialWebSocketReturnsWhenCanceledDuringSDKDial(t *testing.T) {
 	orig := dialWebSocketSyncFn
 	t.Cleanup(func() { dialWebSocketSyncFn = orig })
