@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -166,6 +167,58 @@ func TestDefaultDialWebSocketClosesLateConnection(t *testing.T) {
 	}
 	if closed.Load() != 1 {
 		t.Fatalf("late ws Close calls = %d, want 1", closed.Load())
+	}
+}
+
+func TestDefaultDialWebSocketHandoffCancelRaceCloseExactlyOnce(t *testing.T) {
+	orig := dialWebSocketSyncFn
+	t.Cleanup(func() { dialWebSocketSyncFn = orig })
+
+	var closed atomic.Int32
+	gate := make(chan struct{})
+	listenerWaiting := make(chan struct{})
+	var waitingOnce sync.Once
+	dialWebSocketSyncFn = func(string, string) (WebSocket, error) {
+		waitingOnce.Do(func() { close(listenerWaiting) })
+		<-gate
+		return &trackingWebSocket{onClose: func() { closed.Add(1) }}, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := DefaultDialWebSocket(ctx, "ws://127.0.0.1:1", "token")
+		errCh <- err
+	}()
+
+	select {
+	case <-listenerWaiting:
+	case <-time.After(cancelObservationMax):
+		t.Fatal("dial goroutine did not start sync")
+	}
+	// Caller blocked in select; sync blocked on gate — handoff has not started.
+	var handoffOnce sync.Once
+	go func() {
+		handoffOnce.Do(func() {
+			close(gate)
+			cancel()
+		})
+	}()
+	var err error
+	select {
+	case err = <-errCh:
+	case <-time.After(cancelObservationMax):
+		t.Fatal("dial did not return")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for closed.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if n := closed.Load(); n != 1 {
+		t.Fatalf("Close calls = %d, want 1", n)
 	}
 }
 

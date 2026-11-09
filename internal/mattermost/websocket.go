@@ -54,9 +54,10 @@ func dialWebSocketSync(wsOrigin, token string) (WebSocket, error) {
 	return &liveWebSocket{inner: client}, nil
 }
 
-// DefaultDialWebSocket runs the blocking SDK dial in a goroutine. The caller returns
-// ctx.Err() as soon as ctx is done without waiting for the SDK dial to finish.
-// A connection that completes after ctx is canceled is closed by the dial goroutine.
+// DefaultDialWebSocket runs the blocking SDK dial in a goroutine. Ownership of a live
+// WebSocket moves to the caller only when the result is received from the handshake
+// channel. If ctx ends before handoff, the dial goroutine closes any successful conn;
+// if the caller receives a conn after ctx is already done, the caller closes it.
 func DefaultDialWebSocket(ctx context.Context, wsOrigin, token string) (WebSocket, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -65,15 +66,9 @@ func DefaultDialWebSocket(ctx context.Context, wsOrigin, token string) (WebSocke
 		ws  WebSocket
 		err error
 	}
-	ch := make(chan dialResult, 1)
+	ch := make(chan dialResult)
 	go func() {
 		ws, err := dialWebSocketSyncFn(wsOrigin, token)
-		if ctx.Err() != nil {
-			if ws != nil {
-				ws.Close()
-			}
-			return
-		}
 		res := dialResult{ws: ws, err: err}
 		select {
 		case ch <- res:
@@ -85,15 +80,14 @@ func DefaultDialWebSocket(ctx context.Context, wsOrigin, token string) (WebSocke
 	}()
 	select {
 	case <-ctx.Done():
-		select {
-		case r := <-ch:
+		return nil, ctx.Err()
+	case r := <-ch:
+		if err := ctx.Err(); err != nil {
 			if r.ws != nil {
 				r.ws.Close()
 			}
-		default:
+			return nil, err
 		}
-		return nil, ctx.Err()
-	case r := <-ch:
 		if r.err != nil {
 			if r.ws != nil {
 				r.ws.Close()
