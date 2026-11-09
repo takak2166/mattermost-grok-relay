@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -42,8 +43,19 @@ func newWebSocketDialer(timeout time.Duration) *websocket.Dialer {
 	}
 }
 
-// dialWebSocketSyncFn is the blocking SDK dial used by DefaultDialWebSocket (overridable in tests).
-var dialWebSocketSyncFn = dialWebSocketSync
+type dialWebSocketSyncFn func(wsOrigin, token string) (WebSocket, error)
+
+var dialWebSocketSyncHook atomic.Value // dialWebSocketSyncFn; tests may swap via setDialWebSocketSyncFn.
+
+func init() {
+	dialWebSocketSyncHook.Store(dialWebSocketSyncFn(dialWebSocketSync))
+}
+
+func setDialWebSocketSyncFn(fn dialWebSocketSyncFn) dialWebSocketSyncFn {
+	prev := dialWebSocketSyncHook.Load().(dialWebSocketSyncFn)
+	dialWebSocketSyncHook.Store(fn)
+	return prev
+}
 
 func dialWebSocketSync(wsOrigin, token string) (WebSocket, error) {
 	dialer := newWebSocketDialer(defaultDialTimeout)
@@ -68,7 +80,8 @@ func DefaultDialWebSocket(ctx context.Context, wsOrigin, token string) (WebSocke
 	}
 	ch := make(chan dialResult)
 	go func() {
-		ws, err := dialWebSocketSyncFn(wsOrigin, token)
+		syncFn := dialWebSocketSyncHook.Load().(dialWebSocketSyncFn)
+		ws, err := syncFn(wsOrigin, token)
 		res := dialResult{ws: ws, err: err}
 		select {
 		case ch <- res:

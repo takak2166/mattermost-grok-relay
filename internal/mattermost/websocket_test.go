@@ -64,12 +64,11 @@ func TestBotListenerRunReturnsWithinOneSecondAfterCancelOnStallAcceptServer(t *t
 }
 
 func TestDefaultDialWebSocketReturnsWhenCanceledDuringSDKDial(t *testing.T) {
-	orig := dialWebSocketSyncFn
-	t.Cleanup(func() { dialWebSocketSyncFn = orig })
-	dialWebSocketSyncFn = func(string, string) (WebSocket, error) {
+	orig := setDialWebSocketSyncFn(func(string, string) (WebSocket, error) {
 		time.Sleep(10 * time.Minute)
 		return nil, errors.New("unreachable")
-	}
+	})
+	t.Cleanup(func() { setDialWebSocketSyncFn(orig) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	start := time.Now()
@@ -137,12 +136,11 @@ func TestBotListenerRunReturnsWithinOneSecondWhenDialStalls(t *testing.T) {
 
 func TestDefaultDialWebSocketClosesLateConnection(t *testing.T) {
 	var closed atomic.Int32
-	orig := dialWebSocketSyncFn
-	t.Cleanup(func() { dialWebSocketSyncFn = orig })
-	dialWebSocketSyncFn = func(string, string) (WebSocket, error) {
+	orig := setDialWebSocketSyncFn(func(string, string) (WebSocket, error) {
 		time.Sleep(200 * time.Millisecond)
 		return &trackingWebSocket{onClose: func() { closed.Add(1) }}, nil
-	}
+	})
+	t.Cleanup(func() { setDialWebSocketSyncFn(orig) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
@@ -171,18 +169,16 @@ func TestDefaultDialWebSocketClosesLateConnection(t *testing.T) {
 }
 
 func TestDefaultDialWebSocketHandoffCancelRaceCloseExactlyOnce(t *testing.T) {
-	orig := dialWebSocketSyncFn
-	t.Cleanup(func() { dialWebSocketSyncFn = orig })
-
 	var closed atomic.Int32
 	gate := make(chan struct{})
 	listenerWaiting := make(chan struct{})
 	var waitingOnce sync.Once
-	dialWebSocketSyncFn = func(string, string) (WebSocket, error) {
+	orig := setDialWebSocketSyncFn(func(string, string) (WebSocket, error) {
 		waitingOnce.Do(func() { close(listenerWaiting) })
 		<-gate
 		return &trackingWebSocket{onClose: func() { closed.Add(1) }}, nil
-	}
+	})
+	t.Cleanup(func() { setDialWebSocketSyncFn(orig) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
