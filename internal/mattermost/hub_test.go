@@ -67,8 +67,8 @@ func TestHubRunLogsAbnormalListenerExit(t *testing.T) {
 
 	h := &Hub{
 		SiteURL: "https://fake.example.invalid",
-		Bots: []config.Bot{{ID: "bot-1"}},
-		Logger: logger,
+		Bots:    []config.Bot{{ID: "bot-1"}},
+		Logger:  logger,
 		runListener: func(context.Context, *BotListener) error {
 			return sensitive
 		},
