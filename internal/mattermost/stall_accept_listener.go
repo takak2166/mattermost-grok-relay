@@ -33,7 +33,7 @@ func (s *stallAcceptListener) serve() {
 		}
 		s.once.Do(func() { close(s.accepted) })
 		go func(c net.Conn) {
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 			buf := make([]byte, 4096)
 			for {
 				if _, err := c.Read(buf); err != nil {
