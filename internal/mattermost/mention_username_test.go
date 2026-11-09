@@ -20,6 +20,7 @@ func TestMessageMentionsUsernameBoundaries(t *testing.T) {
 		{"@relaybotlong", false},
 		{"@channel", false},
 		{"@channel @relaybot", true},
+		{"@RelayBot", true},
 		{"", false},
 	}
 	for _, tt := range tests {

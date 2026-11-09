@@ -27,6 +27,7 @@ func TestShouldRelayPost(t *testing.T) {
 		{"group without mention field", string(model.ChannelTypeGroup), makePost("gm text", "other"), nil, true},
 		{"group with only other mention", string(model.ChannelTypeGroup), makePost("gm", "other"), []string{"other"}, true},
 		{"open explicit mention and id", string(model.ChannelTypeOpen), makePost("hey @relaybot", "other"), []string{botID}, true},
+		{"open explicit mention different case", string(model.ChannelTypeOpen), makePost("hey @RelayBot", "other"), []string{botID}, true},
 		{"open mention id only channel broadcast", string(model.ChannelTypeOpen), makePost("@channel everyone", "other"), []string{botID}, false},
 		{"open username only no mentions field", string(model.ChannelTypeOpen), makePost("hey @relaybot", "other"), nil, false},
 		{"open no username with mention id", string(model.ChannelTypeOpen), makePost("hey", "other"), []string{botID}, false},

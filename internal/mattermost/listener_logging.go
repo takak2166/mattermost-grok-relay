@@ -18,6 +18,7 @@ const (
 	failClassIdentityAPI        = "identity_api_failed"
 	failClassWebSocketDial      = "websocket_dial_failed"
 	failClassWebSocketTransport = "websocket_transport_failed"
+	failClassPostedEventInvalid = "posted_event_invalid"
 )
 
 // botListenerExitClass reports whether Hub should emit a structured log and which

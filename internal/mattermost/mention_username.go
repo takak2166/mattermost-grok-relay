@@ -10,20 +10,22 @@ func messageMentionsUsername(message, username string) bool {
 	if username == "" || message == "" {
 		return false
 	}
-	needle := "@" + username
+	lowerMsg := strings.ToLower(message)
+	lowerUser := strings.ToLower(username)
+	needle := "@" + lowerUser
 	searchFrom := 0
 	for {
-		i := strings.Index(message[searchFrom:], needle)
+		i := strings.Index(lowerMsg[searchFrom:], needle)
 		if i < 0 {
 			return false
 		}
 		start := searchFrom + i
 		end := start + len(needle)
-		if start > 0 && isMentionWordChar(rune(message[start-1])) {
+		if start > 0 && isMentionWordChar(rune(lowerMsg[start-1])) {
 			searchFrom = start + 1
 			continue
 		}
-		if end < len(message) && isUsernameChar(rune(message[end])) {
+		if end < len(lowerMsg) && isUsernameChar(rune(lowerMsg[end])) {
 			searchFrom = start + 1
 			continue
 		}

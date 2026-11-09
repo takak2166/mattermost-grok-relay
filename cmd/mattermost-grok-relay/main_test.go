@@ -2,11 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/takak2166/mattermost-grok-relay/internal/app"
+	"github.com/takak2166/mattermost-grok-relay/internal/config"
+	"github.com/takak2166/mattermost-grok-relay/internal/mattermost"
 )
 
 func TestRun(t *testing.T) {
@@ -113,5 +117,95 @@ func TestRunWithRelayConfigJSONEnv(t *testing.T) {
 	leak := "https://grok.example.invalid/hook/test"
 	if strings.Contains(stdout.String(), leak) || strings.Contains(stderr.String(), leak) {
 		t.Fatalf("output leaked webhook URL")
+	}
+}
+
+func relayLookup() func(string) (string, bool) {
+	return func(key string) (string, bool) {
+		switch key {
+		case "RELAY_MATTERMOST_URL":
+			return "https://fake.example.invalid", true
+		case "RELAY_TEST_TOKEN":
+			return "test-token-value", true
+		case "RELAY_TEST_WEBHOOK_URL":
+			return "https://grok.example.invalid/hook/test", true
+		default:
+			return "", false
+		}
+	}
+}
+
+func TestRunRelaySuccessExit0(t *testing.T) {
+	old := startRelay
+	t.Cleanup(func() { startRelay = old })
+	startRelay = func(context.Context, string, config.Config) error {
+		return nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"mattermost-grok-relay", "-config", "testdata/minimal.json"},
+		&stdout, &stderr,
+		relayLookup(),
+	)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+}
+
+func TestRunRelayCanceledExit0(t *testing.T) {
+	old := startRelay
+	t.Cleanup(func() { startRelay = old })
+	startRelay = func(context.Context, string, config.Config) error {
+		return context.Canceled
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"mattermost-grok-relay", "-config", "testdata/minimal.json"},
+		&stdout, &stderr,
+		relayLookup(),
+	)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+}
+
+func TestRunRelayAllListenersStoppedExit1(t *testing.T) {
+	old := startRelay
+	t.Cleanup(func() { startRelay = old })
+	startRelay = func(context.Context, string, config.Config) error {
+		return mattermost.ErrAllListenersStopped
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"mattermost-grok-relay", "-config", "testdata/minimal.json"},
+		&stdout, &stderr,
+		relayLookup(),
+	)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "relay stopped:") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunRelayAbnormalErrorExit1(t *testing.T) {
+	old := startRelay
+	t.Cleanup(func() { startRelay = old })
+	startRelay = func(context.Context, string, config.Config) error {
+		return errors.New("abnormal relay failure")
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"mattermost-grok-relay", "-config", "testdata/minimal.json"},
+		&stdout, &stderr,
+		relayLookup(),
+	)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
 	}
 }

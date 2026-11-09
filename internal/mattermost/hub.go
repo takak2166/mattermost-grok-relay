@@ -18,7 +18,7 @@ type Hub struct {
 	Dial      DialWebSocket
 	OnPost    PostHandler
 	Logger    *slog.Logger
-	ResolveID func(siteURL, token, userID string) (BotIdentity, error)
+	ResolveID ResolveIdentity
 
 	// runListener is used in tests to inject listener exit behavior.
 	runListener botListenerRunFunc
@@ -32,7 +32,7 @@ func (h *Hub) Run(ctx context.Context) error {
 		h.Logger = slog.Default()
 	}
 	if h.ResolveID == nil {
-		h.ResolveID = ResolveBotIdentity
+		h.ResolveID = DefaultResolveIdentity
 	}
 	wsOrigin, err := WebSocketSiteURL(h.SiteURL)
 	if err != nil {
@@ -70,5 +70,8 @@ func (h *Hub) Run(ctx context.Context) error {
 	}
 
 	wg.Wait()
-	return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return ErrAllListenersStopped
 }

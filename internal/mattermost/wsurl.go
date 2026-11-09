@@ -1,6 +1,6 @@
 package mattermost
 
-// Deprecated: use WebSocketSiteURL. Kept as a thin alias for callers in this package.
+// Deprecated: use WebSocketSiteURL.
 func WebSocketOrigin(siteURL string) (string, error) {
 	return WebSocketSiteURL(siteURL)
 }

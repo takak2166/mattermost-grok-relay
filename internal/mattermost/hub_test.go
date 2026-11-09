@@ -90,3 +90,36 @@ func TestHubRunLogsAbnormalListenerExit(t *testing.T) {
 		t.Fatalf("expected exit_class in log: %s", out)
 	}
 }
+
+func TestHubReturnsAllListenersStoppedWhenCtxAlive(t *testing.T) {
+	t.Parallel()
+	h := &Hub{
+		SiteURL: "https://fake.example.invalid",
+		Bots:    []config.Bot{{ID: "bot-1"}, {ID: "bot-2"}},
+		runListener: func(context.Context, *BotListener) error {
+			return errors.New("listener stopped")
+		},
+	}
+	err := h.Run(context.Background())
+	if !errors.Is(err, ErrAllListenersStopped) {
+		t.Fatalf("got %v want ErrAllListenersStopped", err)
+	}
+}
+
+func TestHubReturnsCancelWhenCtxCanceled(t *testing.T) {
+	t.Parallel()
+	h := &Hub{
+		SiteURL: "https://fake.example.invalid",
+		Bots:    []config.Bot{{ID: "bot-1"}},
+		runListener: func(ctx context.Context, _ *BotListener) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := h.Run(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("got %v", err)
+	}
+}

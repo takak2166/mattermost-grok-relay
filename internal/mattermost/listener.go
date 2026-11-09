@@ -22,7 +22,7 @@ type BotListener struct {
 	Token    string
 
 	Dial      DialWebSocket
-	ResolveID func(siteURL, token, userID string) (BotIdentity, error)
+	ResolveID ResolveIdentity
 	Backoff   Backoff
 	OnPost    PostHandler
 	Logger    *slog.Logger
@@ -37,7 +37,7 @@ func (l *BotListener) Run(ctx context.Context) error {
 		l.Logger = slog.Default()
 	}
 	if l.ResolveID == nil {
-		l.ResolveID = ResolveBotIdentity
+		l.ResolveID = DefaultResolveIdentity
 	}
 	backoff := l.Backoff
 	if backoff.Initial == 0 {
@@ -49,7 +49,7 @@ func (l *BotListener) Run(ctx context.Context) error {
 			return err
 		}
 		if l.Identity.UserID == "" {
-			identity, err := l.ResolveID(l.SiteURL, l.Token, l.BotID)
+			identity, err := l.ResolveID(ctx, l.SiteURL, l.Token, l.BotID)
 			if err != nil {
 				logBotListenerWarn(l.Logger, l.BotID, "mattermost resolve bot identity failed", classifyIdentityResolveFail(err))
 				if err := backoff.Sleep(ctx); err != nil {
@@ -59,7 +59,7 @@ func (l *BotListener) Run(ctx context.Context) error {
 			}
 			l.Identity = identity
 		}
-		ws, err := l.Dial(l.WsOrigin, l.Token)
+		ws, err := l.Dial(ctx, l.WsOrigin, l.Token)
 		if err != nil {
 			logBotListenerWarn(l.Logger, l.BotID, "mattermost websocket connect failed", classifyWebSocketDialFail(err))
 			if err := backoff.Sleep(ctx); err != nil {
@@ -91,7 +91,7 @@ func (l *BotListener) consume(ctx context.Context, ws WebSocket) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return context.Canceled
+			return ctx.Err()
 		case <-ws.PingTimeoutChannel():
 			return nil
 		case event, ok := <-ws.EventChannel():
@@ -113,6 +113,9 @@ func (l *BotListener) now() time.Time {
 func (l *BotListener) handleEvent(ctx context.Context, event *model.WebSocketEvent) {
 	channelType, post, mentionIDs, err := ParsePostedEvent(event)
 	if err != nil {
+		if event.EventType() == model.WebsocketEventPosted {
+			logBotListenerWarn(l.Logger, l.BotID, "mattermost posted event invalid", failClassPostedEventInvalid)
+		}
 		return
 	}
 	if MentionsFieldMalformed(event.GetData()) {

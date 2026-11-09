@@ -47,7 +47,7 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 	firstWS := &mockWS{events: make(chan *model.WebSocketEvent), ping: make(chan bool, 1)}
 	secondWS := &mockWS{events: make(chan *model.WebSocketEvent), ping: make(chan bool, 1)}
 
-	dial := func(_, _ string) (WebSocket, error) {
+	dial := func(_ context.Context, _ string, _ string) (WebSocket, error) {
 		n := dials.Add(1)
 		if n == 1 {
 			close(firstWS.events)
@@ -67,7 +67,7 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 		WsOrigin: "wss://example.invalid",
 		Token:    "token",
 		Dial:     dial,
-		ResolveID: func(_, _, _ string) (BotIdentity, error) {
+		ResolveID: func(context.Context, string, string, string) (BotIdentity, error) {
 			return BotIdentity{UserID: "bot-1", Username: "relaybot"}, nil
 		},
 		Backoff: Backoff{
@@ -131,7 +131,7 @@ func TestBotListenerFlapDoesNotResetBackoffImmediately(t *testing.T) {
 		Identity: BotIdentity{UserID: "bot-1"},
 		WsOrigin: "wss://example.invalid",
 		Token:    "token",
-		Dial:     func(_, _ string) (WebSocket, error) { return ws, nil },
+		Dial:     func(context.Context, string, string) (WebSocket, error) { return ws, nil },
 		Backoff:  b,
 	}
 
@@ -169,7 +169,7 @@ func TestBotListenerIdentityFailureLogsRedacted(t *testing.T) {
 		BotID:   "bot-config-1",
 		SiteURL: "https://fake.example.invalid",
 		Logger:  logger,
-		ResolveID: func(_, _, _ string) (BotIdentity, error) {
+		ResolveID: func(context.Context, string, string, string) (BotIdentity, error) {
 			return BotIdentity{}, sensitive
 		},
 		Backoff: Backoff{
@@ -180,7 +180,7 @@ func TestBotListenerIdentityFailureLogsRedacted(t *testing.T) {
 			wait:              time.Millisecond,
 			sleep:             func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
 		},
-		Dial: func(_, _ string) (WebSocket, error) {
+		Dial: func(context.Context, string, string) (WebSocket, error) {
 			t.Fatal("dial must not run before identity resolves")
 			return nil, nil
 		},
@@ -224,7 +224,7 @@ func TestBotListenerDialFailureLogsRedacted(t *testing.T) {
 		BotID:    "bot-config-2",
 		Identity: BotIdentity{UserID: "bot-config-2", Username: "relaybot"},
 		Logger:   logger,
-		Dial: func(_, _ string) (WebSocket, error) {
+		Dial: func(context.Context, string, string) (WebSocket, error) {
 			dials.Add(1)
 			return nil, sensitive
 		},
@@ -259,6 +259,46 @@ func TestBotListenerDialFailureLogsRedacted(t *testing.T) {
 		}
 	}
 	if !strings.Contains(out, failClassWebSocketTransport) {
+		t.Fatalf("expected fail_class in log: %s", out)
+	}
+}
+
+func TestBotListenerNoWarnOnNonPostedEvent(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	ev := model.NewWebSocketEvent(model.WebsocketEventTyping, "", "", "", nil, "")
+
+	l := &BotListener{
+		BotID:  "bot-1",
+		Logger: logger,
+	}
+	l.handleEvent(context.Background(), ev)
+	if strings.Contains(buf.String(), failClassPostedEventInvalid) {
+		t.Fatalf("unexpected warn for non-posted event: %s", buf.String())
+	}
+}
+
+func TestBotListenerLogsInvalidPostedEventWithoutPayload(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	sensitivePost := `not-json-body-with-fake-token-value`
+	ev := model.NewWebSocketEvent(model.WebsocketEventPosted, "", "", "", nil, "")
+	ev.Add("post", sensitivePost)
+
+	l := &BotListener{
+		BotID:    "bot-1",
+		Logger:   logger,
+		Identity: BotIdentity{UserID: "bot-1", Username: "relaybot"},
+	}
+	l.handleEvent(context.Background(), ev)
+
+	out := buf.String()
+	if strings.Contains(out, "fake-token") || strings.Contains(out, sensitivePost) {
+		t.Fatalf("log leaked payload: %s", out)
+	}
+	if !strings.Contains(out, failClassPostedEventInvalid) {
 		t.Fatalf("expected fail_class in log: %s", out)
 	}
 }
