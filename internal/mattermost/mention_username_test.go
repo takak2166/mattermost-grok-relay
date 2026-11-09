@@ -15,6 +15,8 @@ func TestMessageMentionsUsernameBoundaries(t *testing.T) {
 		{"(@relaybot)", true},
 		{"@relaybot_user", false},
 		{"x@relaybot", false},
+		{"foo.@relaybot", true},
+		{"foo-@relaybot", true},
 		{"@relaybotlong", false},
 		{"@channel", false},
 		{"@channel @relaybot", true},

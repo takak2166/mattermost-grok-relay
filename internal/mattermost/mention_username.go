@@ -1,9 +1,6 @@
 package mattermost
 
-import (
-	"strings"
-	"unicode"
-)
+import "strings"
 
 // messageMentionsUsername reports whether message contains an at-mention of username
 // using Mattermost username character rules ([a-z0-9._-]) and boundary checks so
@@ -22,7 +19,7 @@ func messageMentionsUsername(message, username string) bool {
 		}
 		start := searchFrom + i
 		end := start + len(needle)
-		if start > 0 && isUsernameChar(rune(message[start-1])) {
+		if start > 0 && isMentionWordChar(rune(message[start-1])) {
 			searchFrom = start + 1
 			continue
 		}
@@ -34,12 +31,11 @@ func messageMentionsUsername(message, username string) bool {
 	}
 }
 
+// isMentionWordChar matches the \B boundary before @channel/@here in server/public post.go.
+func isMentionWordChar(r rune) bool {
+	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
+}
+
 func isUsernameChar(r rune) bool {
-	if unicode.IsDigit(r) {
-		return true
-	}
-	if r >= 'a' && r <= 'z' {
-		return true
-	}
-	return r == '.' || r == '-' || r == '_'
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_'
 }
