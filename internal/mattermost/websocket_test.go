@@ -222,8 +222,8 @@ type trackingWebSocket struct {
 	onClose func()
 }
 
-func (t *trackingWebSocket) Listen()                           {}
-func (t *trackingWebSocket) Close()                            { t.onClose() }
+func (t *trackingWebSocket) Listen() {}
+func (t *trackingWebSocket) Close()  { t.onClose() }
 func (t *trackingWebSocket) EventChannel() <-chan *model.WebSocketEvent {
 	return make(chan *model.WebSocketEvent)
 }
