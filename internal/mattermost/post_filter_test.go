@@ -10,6 +10,7 @@ import (
 func TestShouldRelayPost(t *testing.T) {
 	t.Parallel()
 	botID := "bot-user-id"
+	botUser := "relaybot"
 	makePost := func(msg, user string) *model.Post {
 		return &model.Post{UserId: user, Message: msg}
 	}
@@ -23,19 +24,22 @@ func TestShouldRelayPost(t *testing.T) {
 	}{
 		{"dm", string(model.ChannelTypeDirect), makePost("hello", "other"), nil, true},
 		{"self dm", string(model.ChannelTypeDirect), makePost("hi", botID), nil, false},
-		{"open with mention id", string(model.ChannelTypeOpen), makePost("hey", "other"), []string{botID}, true},
-		{"open message only no mentions field", string(model.ChannelTypeOpen), makePost("hey @someone", "other"), nil, false},
-		{"private with mention", string(model.ChannelTypePrivate), makePost("x", "other"), []string{"other", botID}, true},
-		{"group with mention", string(model.ChannelTypeGroup), makePost("x", "other"), []string{botID}, true},
-		{"group without mention", string(model.ChannelTypeGroup), makePost("x", "other"), []string{"other"}, false},
-		{"deleted", string(model.ChannelTypeOpen), &model.Post{UserId: "other", DeleteAt: 1}, []string{botID}, false},
+		{"group without mention field", string(model.ChannelTypeGroup), makePost("gm text", "other"), nil, true},
+		{"group with only other mention", string(model.ChannelTypeGroup), makePost("gm", "other"), []string{"other"}, true},
+		{"open explicit mention and id", string(model.ChannelTypeOpen), makePost("hey @relaybot", "other"), []string{botID}, true},
+		{"open mention id only channel broadcast", string(model.ChannelTypeOpen), makePost("@channel everyone", "other"), []string{botID}, false},
+		{"open username only no mentions field", string(model.ChannelTypeOpen), makePost("hey @relaybot", "other"), nil, false},
+		{"open no username with mention id", string(model.ChannelTypeOpen), makePost("hey", "other"), []string{botID}, false},
+		{"private explicit mention", string(model.ChannelTypePrivate), makePost("p @relaybot ok", "other"), []string{botID}, true},
+		{"prefix username false", string(model.ChannelTypeOpen), makePost("@relaybotx", "other"), []string{botID}, false},
+		{"deleted", string(model.ChannelTypeOpen), &model.Post{UserId: "other", DeleteAt: 1, Message: "@relaybot"}, []string{botID}, false},
 		{"system type", string(model.ChannelTypeOpen), &model.Post{UserId: "other", Type: model.PostTypeJoinChannel, Message: "x"}, []string{botID}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := ShouldRelayPost(botID, tt.channelType, tt.post, tt.mentions)
+			got := ShouldRelayPost(botID, botUser, tt.channelType, tt.post, tt.mentions)
 			if got != tt.want {
 				t.Fatalf("ShouldRelayPost() = %v, want %v", got, tt.want)
 			}

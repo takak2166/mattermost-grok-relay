@@ -89,7 +89,14 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 		_ = l.Run(ctx)
 	}()
 
-	secondWS.events <- makePostedEvent(string(model.ChannelTypeOpen), []string{"bot-1"}, "user-2")
+	post := makePostedEvent(string(model.ChannelTypeOpen), []string{"bot-1"}, "user-2")
+	postData, _ := post.GetData()["post"].(string)
+	var p model.Post
+	_ = json.Unmarshal([]byte(postData), &p)
+	p.Message = "hi @relaybot"
+	raw, _ := json.Marshal(&p)
+	post.Add("post", string(raw))
+	secondWS.events <- post
 	select {
 	case id := <-accepted:
 		if id != "p1" {

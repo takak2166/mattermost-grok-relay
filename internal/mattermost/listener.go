@@ -118,7 +118,7 @@ func (l *BotListener) handleEvent(ctx context.Context, event *model.WebSocketEve
 	if MentionsFieldMalformed(event.GetData()) {
 		l.Logger.Debug("mattermost posted event has malformed mentions field", "bot_id", l.BotID, "channel_type", channelType)
 	}
-	if !ShouldRelayPost(l.Identity.UserID, channelType, post, mentionIDs) {
+	if !ShouldRelayPost(l.Identity.UserID, l.Identity.Username, channelType, post, mentionIDs) {
 		return
 	}
 	if l.OnPost != nil {

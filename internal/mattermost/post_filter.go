@@ -91,8 +91,11 @@ func MentionsFieldMalformed(data map[string]any) bool {
 	}
 }
 
-// ShouldRelayPost reports whether a post should be picked up for this bot (mention or DM).
-func ShouldRelayPost(botUserID, channelType string, post *model.Post, mentionIDs []string) bool {
+// ShouldRelayPost reports whether a post should be picked up for this bot.
+// D and G: all posts except the bot's own (and non-user/system posts). O and P:
+// require explicit @username in the message body and the bot user ID in data.mentions
+// (so @channel/@here/@all without @username are excluded).
+func ShouldRelayPost(botUserID, botUsername, channelType string, post *model.Post, mentionIDs []string) bool {
 	if post == nil || post.DeleteAt != 0 {
 		return false
 	}
@@ -102,14 +105,14 @@ func ShouldRelayPost(botUserID, channelType string, post *model.Post, mentionIDs
 	if post.Type != "" && post.Type != model.PostTypeDefault {
 		return false
 	}
-	if channelType == string(model.ChannelTypeDirect) {
-		return true
-	}
 	switch channelType {
-	case string(model.ChannelTypeOpen),
-		string(model.ChannelTypePrivate),
+	case string(model.ChannelTypeDirect),
 		string(model.ChannelTypeGroup):
-		return mentionIncludesBot(mentionIDs, botUserID)
+		return true
+	case string(model.ChannelTypeOpen),
+		string(model.ChannelTypePrivate):
+		return messageMentionsUsername(post.Message, botUsername) &&
+			mentionIncludesBot(mentionIDs, botUserID)
 	default:
 		return false
 	}
