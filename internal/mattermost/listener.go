@@ -48,17 +48,15 @@ func (l *BotListener) Run(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if l.Identity.UserID == "" {
-			identity, err := l.ResolveID(ctx, l.SiteURL, l.Token, l.BotID)
-			if err != nil {
-				logBotListenerWarn(l.Logger, l.BotID, "mattermost resolve bot identity failed", classifyIdentityResolveFail(err))
-				if err := backoff.Sleep(ctx); err != nil {
-					return err
-				}
-				continue
+		identity, err := l.ResolveID(ctx, l.SiteURL, l.Token, l.BotID)
+		if err != nil {
+			logBotListenerWarn(l.Logger, l.BotID, "mattermost resolve bot identity failed", classifyIdentityResolveFail(err))
+			if err := backoff.Sleep(ctx); err != nil {
+				return err
 			}
-			l.Identity = identity
+			continue
 		}
+		l.Identity = identity
 		ws, err := l.Dial(ctx, l.WsOrigin, l.Token)
 		if err != nil {
 			logBotListenerWarn(l.Logger, l.BotID, "mattermost websocket connect failed", classifyWebSocketDialFail(err))

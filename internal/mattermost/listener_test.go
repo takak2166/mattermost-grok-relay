@@ -131,8 +131,11 @@ func TestBotListenerFlapDoesNotResetBackoffImmediately(t *testing.T) {
 		Identity: BotIdentity{UserID: "bot-1"},
 		WsOrigin: "wss://example.invalid",
 		Token:    "token",
-		Dial:     func(context.Context, string, string) (WebSocket, error) { return ws, nil },
-		Backoff:  b,
+		ResolveID: func(context.Context, string, string, string) (BotIdentity, error) {
+			return BotIdentity{UserID: "bot-1", Username: "relaybot"}, nil
+		},
+		Dial:    func(context.Context, string, string) (WebSocket, error) { return ws, nil },
+		Backoff: b,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -152,6 +155,78 @@ func TestBotListenerFlapDoesNotResetBackoffImmediately(t *testing.T) {
 	if slept[0] != time.Second {
 		t.Fatalf("first sleep = %v, want 1s (not reset after short session)", slept[0])
 	}
+}
+
+func TestBotListenerRefreshesIdentityBeforeEachConnect(t *testing.T) {
+	var resolves atomic.Int32
+	var dials atomic.Int32
+	firstWS := &mockWS{events: make(chan *model.WebSocketEvent), ping: make(chan bool, 1)}
+	secondWS := &mockWS{events: make(chan *model.WebSocketEvent), ping: make(chan bool, 1)}
+	accepted := make(chan string, 2)
+
+	l := &BotListener{
+		BotID:    "bot-1",
+		SiteURL:  "https://example.invalid",
+		WsOrigin: "wss://example.invalid",
+		Token:    "token",
+		ResolveID: func(context.Context, string, string, string) (BotIdentity, error) {
+			n := resolves.Add(1)
+			if n == 1 {
+				return BotIdentity{UserID: "u1", Username: "relaybot"}, nil
+			}
+			return BotIdentity{UserID: "u1", Username: "helperbot"}, nil
+		},
+		Dial: func(context.Context, string, string) (WebSocket, error) {
+			n := dials.Add(1)
+			if n == 1 {
+				close(firstWS.events)
+				return firstWS, nil
+			}
+			return secondWS, nil
+		},
+		Backoff: Backoff{
+			Initial:           5 * time.Millisecond,
+			Factor:            1,
+			Cap:               5 * time.Millisecond,
+			StableBeforeReset: time.Minute,
+			wait:              5 * time.Millisecond,
+		},
+		OnPost: func(_ context.Context, _ string, post *model.Post) {
+			select {
+			case accepted <- post.Id:
+			default:
+			}
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = l.Run(ctx) }()
+
+	post := makePostedEvent(string(model.ChannelTypeOpen), []string{"u1"}, "user-2")
+	postData, _ := post.GetData()["post"].(string)
+	var p model.Post
+	_ = json.Unmarshal([]byte(postData), &p)
+	p.Message = "hi @helperbot"
+	raw, _ := json.Marshal(&p)
+	post.Add("post", string(raw))
+	secondWS.events <- post
+
+	select {
+	case id := <-accepted:
+		if id != "p1" {
+			t.Fatalf("post id = %q", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for post after username refresh")
+	}
+	if resolves.Load() < 2 {
+		t.Fatalf("resolve calls = %d, want at least 2", resolves.Load())
+	}
+	if l.Identity.Username != "helperbot" {
+		t.Fatalf("identity username = %q, want helperbot", l.Identity.Username)
+	}
+	cancel()
 }
 
 func TestBotListenerIdentityFailureLogsRedacted(t *testing.T) {
@@ -224,6 +299,9 @@ func TestBotListenerDialFailureLogsRedacted(t *testing.T) {
 		BotID:    "bot-config-2",
 		Identity: BotIdentity{UserID: "bot-config-2", Username: "relaybot"},
 		Logger:   logger,
+		ResolveID: func(context.Context, string, string, string) (BotIdentity, error) {
+			return BotIdentity{UserID: "bot-config-2", Username: "relaybot"}, nil
+		},
 		Dial: func(context.Context, string, string) (WebSocket, error) {
 			dials.Add(1)
 			return nil, sensitive
