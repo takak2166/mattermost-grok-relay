@@ -27,7 +27,16 @@ Bot の対応表は JSON（ファイルまたは環境変数）で定義しま�
 
 各 Bot では `url_env` / `url_file` のどちらか一方、`token_env` / `token_file` のどちらか一方を指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
 
-**必須環境変数:** `RELAY_MATTERMOST_URL` — Mattermost サイトのベース URL（`https://…`。サブパス配下の場合は `https://…/subpath`）。公式 Go クライアント（`Client4` / `WebSocketClient4`）が REST と WebSocket の両方にこの URL を使います。
+**必須環境変数**
+
+| 変数 | 説明 |
+| --- | --- |
+| `RELAY_MATTERMOST_URL` | Mattermost サイトのベース URL（`https://…`。サブパス配下の場合は `https://…/subpath`）。公式 Go クライアント（`Client4` / `WebSocketClient4`）が REST と WebSocket の両方にこの URL を使います。 |
+| `RELAY_ALLOWED_USER_IDS` | 中継の後段処理を許可する Mattermost ユーザー ID のカンマ区切り一覧（**全 Bot 共通**）。前後の空白は除去し、空要素は無視します。**フェイルクローズ:** 未設定・空文字・パース結果が ID ゼロ件のときは起動時に設定エラーで終了し、誰も通さない状態で動かしません。例: `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb`。 |
+
+### 送信者許可（チャンネル種別フィルタ通過後）
+
+上記の DM / グループ / チャンネル向けフィルタを通過した投稿について、送信者のユーザー ID が `RELAY_ALLOWED_USER_IDS` に含まれる場合のみ後段へ進みます（現状は構造化デバッグログでの受け入れのみ。webhook 転送は今後ここに差し込みます）。許可外の送信者は転送せず、固定メッセージ `relay post sender not allowed`、`fail_class=sender_not_allowed` の `slog` info を 1 件だけ記録します。項目は `bot_id`、送信者ユーザー ID（`sender_user_id`）、投稿イベントの表示名（`sender_name`、取れる範囲。Mattermost では通常 `@username` 形式）、チャンネル種別（`D` / `G` / `O` / `P`）、`channel_id`、`post_id`、本文先頭 100 ルーンの `message_prefix`（切り詰め時は `…` 付き）です。トークン・秘密・URL はログに含めません。
 
 ### WebSocket 受信と再接続
 

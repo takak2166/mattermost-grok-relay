@@ -27,7 +27,16 @@ Bot routing is defined in JSON (file or inline env). Add one object under `bots`
 
 Use exactly one of `url_env` or `url_file`, and exactly one of `token_env` or `token_file`, per bot. Set `RELAY_CONFIG` to a file path, `RELAY_CONFIG_JSON` for inline JSON, or pass `-config path`.
 
-**Required environment variable:** `RELAY_MATTERMOST_URL` — Mattermost site base URL (`https://…`, or `https://…/subpath` when served under a path). The relay uses the official Go client (`Client4` / `WebSocketClient4`) with that URL for REST and WebSocket.
+**Required environment variables**
+
+| Variable | Description |
+| --- | --- |
+| `RELAY_MATTERMOST_URL` | Mattermost site base URL (`https://…`, or `https://…/subpath` when served under a path). The relay uses the official Go client (`Client4` / `WebSocketClient4`) with this URL for REST and WebSocket. |
+| `RELAY_ALLOWED_USER_IDS` | Comma-separated Mattermost user IDs allowed to trigger relay handling for **all** bots (whitespace around IDs is trimmed; empty comma-separated segments are ignored). **Fail closed:** if this variable is unset, empty, or parses to no IDs, the process exits at startup with a configuration error and does not run in an “allow everyone” mode. Example: `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb`. |
+
+### Sender allowlist (after channel filter)
+
+Posts that pass the DM/group/channel filters above are checked against `RELAY_ALLOWED_USER_IDS`. Allowed senders proceed to downstream handling (today: structured debug acceptance; webhook forwarding will plug in here later). Disallowed senders are not forwarded; the relay writes one structured `slog` info record with fixed message `relay post sender not allowed`, `fail_class=sender_not_allowed`, and fields: `bot_id`, sender user ID (`sender_user_id`), sender display name from the posted event (`sender_name`, when present — Mattermost typically sends `@username`), channel type (`D` / `G` / `O` / `P`), `channel_id`, `post_id`, and a `message_prefix` of the post body (first 100 runes, with `…` when truncated). Tokens, secrets, and URLs are not logged.
 
 ### WebSocket receive and reconnect
 

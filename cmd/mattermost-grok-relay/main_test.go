@@ -125,6 +125,8 @@ func relayLookup() func(string) (string, bool) {
 		switch key {
 		case "RELAY_MATTERMOST_URL":
 			return "https://fake.example.invalid", true
+		case "RELAY_ALLOWED_USER_IDS":
+			return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", true
 		case "RELAY_TEST_TOKEN":
 			return "test-token-value", true
 		case "RELAY_TEST_WEBHOOK_URL":
@@ -135,10 +137,37 @@ func relayLookup() func(string) (string, bool) {
 	}
 }
 
+func TestRunMissingAllowedUserIDs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	lookup := func(key string) (string, bool) {
+		switch key {
+		case "RELAY_MATTERMOST_URL":
+			return "https://fake.example.invalid", true
+		case "RELAY_TEST_TOKEN":
+			return "test-token-value", true
+		case "RELAY_TEST_WEBHOOK_URL":
+			return "https://grok.example.invalid/hook/test", true
+		default:
+			return "", false
+		}
+	}
+	code := run(
+		[]string{"mattermost-grok-relay", "-config", "testdata/minimal.json"},
+		&stdout, &stderr,
+		lookup,
+	)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "RELAY_ALLOWED_USER_IDS") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
 func TestRunRelaySuccessExit0(t *testing.T) {
 	old := startRelay
 	t.Cleanup(func() { startRelay = old })
-	startRelay = func(context.Context, string, config.Config) error {
+	startRelay = func(context.Context, string, config.Config, config.AllowedUserSet) error {
 		return nil
 	}
 
@@ -156,7 +185,7 @@ func TestRunRelaySuccessExit0(t *testing.T) {
 func TestRunRelayCanceledExit0(t *testing.T) {
 	old := startRelay
 	t.Cleanup(func() { startRelay = old })
-	startRelay = func(context.Context, string, config.Config) error {
+	startRelay = func(context.Context, string, config.Config, config.AllowedUserSet) error {
 		return context.Canceled
 	}
 
@@ -174,7 +203,7 @@ func TestRunRelayCanceledExit0(t *testing.T) {
 func TestRunRelayAllListenersStoppedExit1(t *testing.T) {
 	old := startRelay
 	t.Cleanup(func() { startRelay = old })
-	startRelay = func(context.Context, string, config.Config) error {
+	startRelay = func(context.Context, string, config.Config, config.AllowedUserSet) error {
 		return mattermost.ErrAllListenersStopped
 	}
 
@@ -195,7 +224,7 @@ func TestRunRelayAllListenersStoppedExit1(t *testing.T) {
 func TestRunRelayAbnormalErrorExit1(t *testing.T) {
 	old := startRelay
 	t.Cleanup(func() { startRelay = old })
-	startRelay = func(context.Context, string, config.Config) error {
+	startRelay = func(context.Context, string, config.Config, config.AllowedUserSet) error {
 		return errors.New("abnormal relay failure")
 	}
 

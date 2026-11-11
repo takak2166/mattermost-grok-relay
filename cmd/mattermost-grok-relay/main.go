@@ -59,7 +59,15 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 		return 1
 	}
 
-	if err := startRelay(context.Background(), siteURL, cfg); err != nil {
+	allowed, err := config.AllowedUserIDs(lookupEnv)
+	if err != nil {
+		if _, werr := fmt.Fprintf(stderr, "config load failed: %s\n", err); werr != nil {
+			return 1
+		}
+		return 1
+	}
+
+	if err := startRelay(context.Background(), siteURL, cfg, allowed); err != nil {
 		if errors.Is(err, context.Canceled) {
 			return 0
 		}
