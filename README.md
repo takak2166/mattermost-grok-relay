@@ -27,6 +27,19 @@ Bot routing is defined in JSON (file or inline env). Add one object under `bots`
 
 Use exactly one of `url_env` or `url_file`, and exactly one of `token_env` or `token_file`, per bot. Set `RELAY_CONFIG` to a file path, `RELAY_CONFIG_JSON` for inline JSON, or pass `-config path`.
 
+**Required environment variable:** `RELAY_MATTERMOST_URL` — Mattermost site base URL (`https://…`, or `https://…/subpath` when served under a path). The relay uses the official Go client (`Client4` / `WebSocketClient4`) with that URL for REST and WebSocket.
+
+### WebSocket receive and reconnect
+
+- Each bot user in the mapping table gets its own WebSocket connection.
+- **Direct messages** (`D`) and **group messages** (`G`) are accepted unless the post is from the bot itself (deleted and non-default system post types are skipped, same as before).
+- **Open and private channels** (`O`, `P`) require both: the message body contains an explicit `@<bot username>` with username-boundary checks (Mattermost-style `[a-z0-9._-]`, no prefix false-positives; the username match is **case-insensitive**), and the posted event’s `mentions` field includes the bot’s user ID. Posts that only use `@channel`, `@here`, or `@all` are excluded even when `mentions` lists the bot, because `mentions` reflects server notification targets and cannot prove an explicit `@bot` in the text.
+- Before each WebSocket session, the relay resolves the bot user via Mattermost REST (`GetMe`) using the caller context and a **30 second** default HTTP client timeout.
+- WebSocket connect uses Mattermost `server/public` **v0.6.0** (`NewWebSocketClient4WithDialer`) with a custom gorilla/websocket **v1.5.3** dialer (**30 second** TCP connect and handshake timeout on the dial path). On shutdown or cancel, the **listener returns without waiting** for an in-flight dial; the dial may continue in the background until those SDK/gorilla limits are reached. A connection that finishes after cancel is closed by the dial goroutine.
+- **Process exit:** graceful shutdown (`context.Canceled`, for example after SIGTERM) exits **0**; if every bot listener stops while the top-level context is still active, the process exits **1** and prints `relay stopped` on stderr.
+- On disconnect or ping timeout, the relay reconnects with exponential backoff: **1s** initial delay, multiply by **2** each failure, **60s** cap. Backoff resets only after a connection stayed up for **60 seconds**; brief flaps keep the current backoff level.
+- The official `WebSocketClient` (`server/public` **v0.6.0**) may write JSON decode warnings via Mattermost **mlog** (default stderr when the global mlog logger is unset), separate from this relay’s slog output. That call does not log the client’s URL or auth token fields, but `mlog.Err` prints `error.Error()`, which can include JSON parse/type diagnostics that quote parts of a received WebSocket frame.
+
 See `internal/config/testdata/example.json` for a sample.
 
 ## Development
@@ -43,4 +56,4 @@ docker build -t mattermost-grok-relay:local .
 docker run --rm mattermost-grok-relay:local -version
 ```
 
-The image **prints the version with `-version` and exits**; it is not a long-running process yet. Always-on WebSocket relay logic and the default container command will change when that work lands.
+Without `-version`, the container runs the relay: it loads configuration and maintains bot WebSocket connections until it receives a stop signal.

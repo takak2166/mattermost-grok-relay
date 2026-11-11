@@ -24,4 +24,3 @@ COPY --from=builder /out/mattermost-grok-relay /app/mattermost-grok-relay
 
 USER nobody
 ENTRYPOINT ["/app/mattermost-grok-relay"]
-CMD ["-version"]
