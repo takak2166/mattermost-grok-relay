@@ -22,6 +22,7 @@ func defaultBotEnv() map[string]string {
 	return map[string]string{
 		"MM_URL_ORIMAR":   testWebhook,
 		"MM_TOKEN_ORIMAR": testToken,
+		"MM_KEY_ORIMAR":   testWebhookKey,
 	}
 }
 
@@ -33,6 +34,7 @@ func TestLoadExampleFixture(t *testing.T) {
 		LookupEnv: testLookup(map[string]string{
 			"RELAY_BOT_WEBHOOK_URL_ORIMAR": testWebhook,
 			"RELAY_BOT_TOKEN_ORIMAR":       testToken,
+			"RELAY_BOT_WEBHOOK_KEY_ORIMAR": testWebhookKey,
 		}),
 	})
 	if err != nil {
@@ -76,7 +78,7 @@ func TestLoadSuccessFromJSON(t *testing.T) {
 	t.Parallel()
 
 	cfg, err := Load(LoadOptions{
-		ConfigJSON: `{"bots":[{"id":"orimar","url_env":"MM_URL_ORIMAR","token_env":"MM_TOKEN_ORIMAR"}]}`,
+		ConfigJSON: `{"bots":[{"id":"orimar","url_env":"MM_URL_ORIMAR","token_env":"MM_TOKEN_ORIMAR","key_env":"MM_KEY_ORIMAR"}]}`,
 		LookupEnv:  testLookup(defaultBotEnv()),
 	})
 	if err != nil {
@@ -100,9 +102,10 @@ func TestLoadSuccessFromURLAndTokenFiles(t *testing.T) {
 	t.Parallel()
 
 	files := map[string][]byte{
-		"/etc/relay/config.json":  []byte(`{"bots":[{"id":"beta","url_file":"/run/secrets/beta/url","token_file":"/run/secrets/beta/token"}]}`),
+		"/etc/relay/config.json":  []byte(`{"bots":[{"id":"beta","url_file":"/run/secrets/beta/url","token_file":"/run/secrets/beta/token","key_file":"/run/secrets/beta/key"}]}`),
 		"/run/secrets/beta/url":   []byte("  https://grok.example.invalid/hook/beta  \n"),
 		"/run/secrets/beta/token": []byte("  file-token-value  \n"),
+		"/run/secrets/beta/key":   []byte("  file-webhook-key-value  \n"),
 	}
 
 	cfg, err := Load(LoadOptions{
@@ -131,16 +134,18 @@ func TestLoadAddsBotWithoutCodeChange(t *testing.T) {
 
 	const twoBots = `{
 	  "bots": [
-	    {"id":"orimar","url_env":"U_ORIMAR","token_env":"T_ORIMAR"},
-	    {"id":"helper","url_env":"U_HELPER","token_env":"T_HELPER"}
+	    {"id":"orimar","url_env":"U_ORIMAR","token_env":"T_ORIMAR","key_env":"K_ORIMAR"},
+	    {"id":"helper","url_env":"U_HELPER","token_env":"T_HELPER","key_env":"K_HELPER"}
 	  ]
 	}`
 
 	env := map[string]string{
 		"U_ORIMAR": "https://grok.example.invalid/hook/orimar",
 		"T_ORIMAR": "tok-a",
+		"K_ORIMAR": "key-a",
 		"U_HELPER": "https://grok.example.invalid/hook/helper",
 		"T_HELPER": "tok-b",
+		"K_HELPER": "key-b",
 	}
 	cfg, err := Load(LoadOptions{
 		ConfigJSON: twoBots,
@@ -184,8 +189,8 @@ func TestLoadRejectsLegacyWebhookURLField(t *testing.T) {
 	t.Parallel()
 
 	_, err := Load(LoadOptions{
-		ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_env":"T"}]}`,
-		LookupEnv:  testLookup(map[string]string{"T": testToken}),
+		ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_env":"T","key_env":"K"}]}`,
+		LookupEnv:  testLookup(map[string]string{"T": testToken, "K": testWebhookKey}),
 	})
 	if err == nil {
 		t.Fatal("expected error")
@@ -216,10 +221,11 @@ func TestLoadErrorsDoNotLeakWebhookURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := Load(LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"x","url_env":"SECRET_URL","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"x","url_env":"SECRET_URL","token_env":"T","key_env":"K"}]}`,
 				LookupEnv: testLookup(map[string]string{
 					"SECRET_URL": tt.url,
 					"T":          testToken,
+					"K":          testWebhookKey,
 				}),
 			})
 			if err == nil {
@@ -239,7 +245,11 @@ func TestLoadErrorsDoNotLeakWebhookURL(t *testing.T) {
 func TestLoadFailClosed(t *testing.T) {
 	t.Parallel()
 
-	baseEnv := defaultBotEnv()
+	baseEnv := map[string]string{
+		"U": testWebhook,
+		"T": testToken,
+		"K": testWebhookKey,
+	}
 
 	tests := []struct {
 		name string
@@ -277,17 +287,18 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "legacy webhook_url field",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","webhook_url":"https://grok.example.invalid/h","token_env":"T","key_env":"K"}]}`,
 			},
 			want: "invalid JSON",
 		},
 		{
 			name: "invalid webhook scheme",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K"}]}`,
 				LookupEnv: testLookup(map[string]string{
 					"U": "http://grok.example.invalid/h",
 					"T": testToken,
+					"K": testWebhookKey,
 				}),
 			},
 			want: "valid https URL",
@@ -295,10 +306,11 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "invalid webhook value",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K"}]}`,
 				LookupEnv: testLookup(map[string]string{
 					"U": "not-a-url",
 					"T": testToken,
+					"K": testWebhookKey,
 				}),
 			},
 			want: "valid https URL",
@@ -306,10 +318,11 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "webhook missing hostname",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K"}]}`,
 				LookupEnv: testLookup(map[string]string{
 					"U": "https://:443/hook",
 					"T": testToken,
+					"K": testWebhookKey,
 				}),
 			},
 			want: "valid https URL",
@@ -317,7 +330,7 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "trailing json after config",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]} {"bots":[]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K"}]} {"bots":[]}`,
 				LookupEnv:  testLookup(baseEnv),
 			},
 			want: "trailing data",
@@ -325,10 +338,10 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "second bot validation index",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"ok","url_env":"U1","token_env":"T1"},{"id":"","url_env":"U2","token_env":"T2"}]}`,
+				ConfigJSON: `{"bots":[{"id":"ok","url_env":"U1","token_env":"T1","key_env":"K1"},{"id":"","url_env":"U2","token_env":"T2","key_env":"K2"}]}`,
 				LookupEnv: testLookup(map[string]string{
-					"U1": testWebhook, "T1": testToken,
-					"U2": testWebhook, "T2": testToken,
+					"U1": testWebhook, "T1": testToken, "K1": testWebhookKey,
+					"U2": testWebhook, "T2": testToken, "K2": testWebhookKey,
 				}),
 			},
 			want: "bots[1]",
@@ -336,8 +349,8 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "url file missing",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_file":"/missing/url","token_env":"T"}]}`,
-				LookupEnv:  testLookup(map[string]string{"T": testToken}),
+				ConfigJSON: `{"bots":[{"id":"a","url_file":"/missing/url","token_env":"T","key_env":"K"}]}`,
+				LookupEnv:  testLookup(map[string]string{"T": testToken, "K": testWebhookKey}),
 				ReadFile: func(path string) ([]byte, error) {
 					return nil, fs.ErrNotExist
 				},
@@ -347,8 +360,8 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "token file missing",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_file":"/missing/token"}]}`,
-				LookupEnv:  testLookup(map[string]string{"U": testWebhook}),
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_file":"/missing/token","key_env":"K"}]}`,
+				LookupEnv:  testLookup(map[string]string{"U": testWebhook, "K": testWebhookKey}),
 				ReadFile: func(path string) ([]byte, error) {
 					return nil, fs.ErrNotExist
 				},
@@ -368,7 +381,7 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "missing id",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"url_env":"U","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"url_env":"U","token_env":"T","key_env":"K"}]}`,
 				LookupEnv:  testLookup(baseEnv),
 			},
 			want: "id is required",
@@ -376,25 +389,26 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "missing url source",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","token_env":"T"}]}`,
-				LookupEnv:  testLookup(map[string]string{"T": testToken}),
+				ConfigJSON: `{"bots":[{"id":"a","token_env":"T","key_env":"K"}]}`,
+				LookupEnv:  testLookup(map[string]string{"T": testToken, "K": testWebhookKey}),
 			},
 			want: "url_env or url_file is required",
 		},
 		{
 			name: "both url sources",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","url_file":"/x","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","url_file":"/x","token_env":"T","key_env":"K"}]}`,
 			},
 			want: "only one of url_env or url_file",
 		},
 		{
 			name: "empty url env",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"EMPTY_URL","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"EMPTY_URL","token_env":"T","key_env":"K"}]}`,
 				LookupEnv: testLookup(map[string]string{
 					"EMPTY_URL": "",
 					"T":         testToken,
+					"K":         testWebhookKey,
 				}),
 			},
 			want: "missing or empty",
@@ -410,18 +424,18 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "both token sources",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","token_file":"/x"}]}`,
-				LookupEnv:  testLookup(map[string]string{"U": testWebhook}),
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K","token_file":"/x"}]}`,
+				LookupEnv:  testLookup(map[string]string{"U": testWebhook, "K": testWebhookKey}),
 			},
 			want: "only one of token_env or token_file",
 		},
 		{
 			name: "duplicate id",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"dup","url_env":"U1","token_env":"T1"},{"id":"dup","url_env":"U2","token_env":"T2"}]}`,
+				ConfigJSON: `{"bots":[{"id":"dup","url_env":"U1","token_env":"T1","key_env":"K1"},{"id":"dup","url_env":"U2","token_env":"T2","key_env":"K2"}]}`,
 				LookupEnv: testLookup(map[string]string{
-					"U1": testWebhook, "T1": testToken,
-					"U2": testWebhook, "T2": testToken,
+					"U1": testWebhook, "T1": testToken, "K1": testWebhookKey,
+					"U2": testWebhook, "T2": testToken, "K2": testWebhookKey,
 				}),
 			},
 			want: `duplicate bot id "dup"`,
@@ -439,8 +453,8 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "whitespace only token file",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_file":"/secrets/token"}]}`,
-				LookupEnv:  testLookup(map[string]string{"U": testWebhook}),
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_file":"/secrets/token","key_env":"K"}]}`,
+				LookupEnv:  testLookup(map[string]string{"U": testWebhook, "K": testWebhookKey}),
 				ReadFile: func(string) ([]byte, error) {
 					return []byte("   \n"), nil
 				},
@@ -450,8 +464,8 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "whitespace only url file",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_file":"/secrets/url","token_env":"T"}]}`,
-				LookupEnv:  testLookup(map[string]string{"T": testToken}),
+				ConfigJSON: `{"bots":[{"id":"a","url_file":"/secrets/url","token_env":"T","key_env":"K"}]}`,
+				LookupEnv:  testLookup(map[string]string{"T": testToken, "K": testWebhookKey}),
 				ReadFile: func(string) ([]byte, error) {
 					return []byte("   \n"), nil
 				},
@@ -461,13 +475,30 @@ func TestLoadFailClosed(t *testing.T) {
 		{
 			name: "webhook with userinfo",
 			opts: LoadOptions{
-				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]}`,
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K"}]}`,
 				LookupEnv: testLookup(map[string]string{
 					"U": "https://user:pass@grok.example.invalid/h",
 					"T": testToken,
+					"K": testWebhookKey,
 				}),
 			},
 			want: "valid https URL",
+		},
+		{
+			name: "missing key source",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T"}]}`,
+				LookupEnv:  testLookup(map[string]string{"U": testWebhook, "T": testToken}),
+			},
+			want: "key_env or key_file is required",
+		},
+		{
+			name: "both key sources",
+			opts: LoadOptions{
+				ConfigJSON: `{"bots":[{"id":"a","url_env":"U","token_env":"T","key_env":"K","key_file":"/x"}]}`,
+				LookupEnv:  testLookup(map[string]string{"U": testWebhook, "T": testToken, "K": testWebhookKey}),
+			},
+			want: "only one of key_env or key_file",
 		},
 	}
 
@@ -490,10 +521,11 @@ func TestBotErrorMessagesDoNotLeakLoadedSecrets(t *testing.T) {
 
 	secret := "loaded-but-must-not-appear"
 	_, err := Load(LoadOptions{
-		ConfigJSON: `{"bots":[{"id":"","url_env":"U","token_env":"T"}]}`,
+		ConfigJSON: `{"bots":[{"id":"","url_env":"U","token_env":"T","key_env":"K"}]}`,
 		LookupEnv: testLookup(map[string]string{
 			"U": testWebhook,
 			"T": secret,
+			"K": testWebhookKey,
 		}),
 	})
 	if err == nil {

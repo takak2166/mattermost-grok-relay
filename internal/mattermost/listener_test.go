@@ -87,7 +87,7 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 			StableBeforeReset: time.Minute,
 			wait:              10 * time.Millisecond,
 		},
-		OnPost: func(_ context.Context, botID string, post *model.Post) {
+		OnPost: func(_ context.Context, botID string, post *model.Post, _ string) {
 			accepted <- post.Id
 		},
 		AllowedSenders: testAllowedUserIDs("user-2"),
@@ -202,7 +202,7 @@ func TestBotListenerRefreshesIdentityBeforeEachConnect(t *testing.T) {
 			StableBeforeReset: time.Minute,
 			wait:              5 * time.Millisecond,
 		},
-		OnPost: func(_ context.Context, _ string, post *model.Post) {
+		OnPost: func(_ context.Context, _ string, post *model.Post, _ string) {
 			select {
 			case accepted <- post.Id:
 			default:
@@ -414,7 +414,7 @@ func TestBotListenerDeniedSenderLogsWithoutOnPost(t *testing.T) {
 		Logger:         logger,
 		Identity:       BotIdentity{UserID: "bot-1", Username: "relaybot"},
 		AllowedSenders: testAllowedUserIDs("allowed-user-1"),
-		OnPost: func(context.Context, string, *model.Post) {
+		OnPost: func(context.Context, string, *model.Post, string) {
 			called <- struct{}{}
 		},
 	}
@@ -456,7 +456,7 @@ func TestBotListenerNilAllowedSendersDeniesOnPost(t *testing.T) {
 	l := &BotListener{
 		BotID:    "bot-1",
 		Identity: BotIdentity{UserID: "bot-1", Username: "relaybot"},
-		OnPost: func(context.Context, string, *model.Post) {
+		OnPost: func(context.Context, string, *model.Post, string) {
 			called <- struct{}{}
 		},
 	}
@@ -478,7 +478,7 @@ func TestBotListenerAllowedSenderInvokesOnPost(t *testing.T) {
 		BotID:          "bot-1",
 		Identity:       BotIdentity{UserID: "bot-1", Username: "relaybot"},
 		AllowedSenders: testAllowedUserIDs("allowed-user-1"),
-		OnPost: func(_ context.Context, _ string, p *model.Post) {
+		OnPost: func(_ context.Context, _ string, p *model.Post, _ string) {
 			called <- p.Id
 		},
 	}

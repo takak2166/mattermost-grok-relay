@@ -3,7 +3,8 @@
     {
       "id": "orimar-bot-user-id",
       "url_env": "RELAY_BOT_WEBHOOK_URL_ORIMAR",
-      "token_env": "RELAY_BOT_TOKEN_ORIMAR"
+      "token_env": "RELAY_BOT_TOKEN_ORIMAR",
+      "key_env": "RELAY_BOT_WEBHOOK_KEY_ORIMAR"
     }
   ]
 }

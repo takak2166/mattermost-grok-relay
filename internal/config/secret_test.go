@@ -11,6 +11,7 @@ import (
 
 const testToken = "mm-bot-token-super-secret-value"
 const testWebhook = "https://grok.example.invalid/routines/orimar/inbound?key=abc123"
+const testWebhookKey = "grok-inbound-webhook-key-dummy"
 
 func TestSecretDoesNotLeak(t *testing.T) {
 	t.Parallel()

@@ -24,8 +24,10 @@ Bot の対応表は JSON（ファイルまたは環境変数）で定義しま�
 | `url_file` | webhook URL が書かれたファイルパス（Secret マウント等） |
 | `token_env` | Bot トークンを入れた環境変数名 |
 | `token_file` | Bot トークンが書かれたファイルパス（Secret マウント等） |
+| `key_env` | Grok inbound webhook 認証キーを入れた環境変数名 |
+| `key_file` | webhook 認証キーが書かれたファイルパス（Secret マウント等） |
 
-各 Bot では `url_env` / `url_file` のどちらか一方、`token_env` / `token_file` のどちらか一方を指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
+各 Bot では `url_env` / `url_file`、`token_env` / `token_file`、`key_env` / `key_file` それぞれ**ちょうど一方**を指定します。`RELAY_CONFIG`（ファイルパス）、`RELAY_CONFIG_JSON`（JSON 文字列）、または `-config` で読み込みます。
 
 **必須環境変数**
 
@@ -36,7 +38,25 @@ Bot の対応表は JSON（ファイルまたは環境変数）で定義しま�
 
 ### 送信者許可（チャンネル種別フィルタ通過後）
 
-上記の DM / グループ / チャンネル向けフィルタを通過した投稿について、送信者のユーザー ID が `RELAY_ALLOWED_USER_IDS` に含まれる場合のみ後段へ進みます（現状は構造化デバッグログでの受け入れのみ。webhook 転送は今後ここに差し込みます）。許可外の送信者は転送せず、固定メッセージ `relay post sender not allowed`、`fail_class=sender_not_allowed` の `slog` info を 1 件だけ記録します。項目は `bot_id`、送信者ユーザー ID（`sender_user_id`）、投稿イベントの表示名（`sender_name`、取れる範囲。Mattermost では通常 `@username` 形式）、チャンネル種別（`D` / `G` / `O` / `P`）、`channel_id`、`post_id`、本文先頭 100 ルーンの `message_prefix`（切り詰め時は `…` 付き）です。トークン・秘密・URL はログに含めません。許可外送信者に限り、運用監査のため投稿本文先頭（最大 100 ルーン）を `message_prefix` として**意図的に**記録します。ログ基盤のアクセスは運用側で制限してください。
+上記の DM / グループ / チャンネル向けフィルタを通過した投稿について、送信者のユーザー ID が `RELAY_ALLOWED_USER_IDS` に含まれる場合のみ、その Bot の Grok inbound webhook へ JSON を POST します（下記）。許可外の送信者は転送せず、固定メッセージ `relay post sender not allowed`、`fail_class=sender_not_allowed` の `slog` info を 1 件だけ記録します。項目は `bot_id`、送信者ユーザー ID（`sender_user_id`）、投稿イベントの表示名（`sender_name`、取れる範囲。Mattermost では通常 `@username` 形式）、チャンネル種別（`D` / `G` / `O` / `P`）、`channel_id`、`post_id`、本文先頭 100 ルーンの `message_prefix`（切り詰め時は `…` 付き）です。トークン・秘密・URL はログに含めません。許可外送信者に限り、運用監査のため投稿本文先頭（最大 100 ルーン）を `message_prefix` として**意図的に**記録します。ログ基盤のアクセスは運用側で制限してください。
+
+### Grok webhook 転送（許可された送信者）
+
+許可された投稿ごとに、Bot 設定の webhook URL へ `{"meta":{...}}` を POST します。
+
+| `meta` フィールド | 内容 |
+| --- | --- |
+| `platform` | `"mattermost"` |
+| `channel_id` | Mattermost チャンネル ID |
+| `thread_id` | `root_id` があればそれ、なければ `post_id`（DM も同じ） |
+| `post_id` | Mattermost 投稿 ID |
+| `user.id` | 送信者ユーザー ID |
+| `user.username` | 投稿イベントの `sender_name`（取れる範囲） |
+| `text` | 投稿本文全体 |
+
+HTTP は **10 秒**タイムアウト、**再送なし**。2xx を成功とし、それ以外のステータスとネットワークエラーは失敗です。試行ごとに固定の `slog` 1 行（`grok webhook forward succeeded` / `grok webhook forward failed` と `fail_class`）を出し、URL・認証キー・本文はログに含めません。結果は `webhook.ForwardResult` として後続のエラー返信処理から参照できます。
+
+**Webhook 認証（暫定）:** inbound キーのヘッダー形式は未確定です。現状は `webhook.SetRequestAuth` で `Authorization: Bearer <key>` を付与しており、形式が決まったらこの関数だけ差し替えます。
 
 ### WebSocket 受信と再接続
 
