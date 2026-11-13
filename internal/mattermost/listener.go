@@ -11,7 +11,8 @@ import (
 	"github.com/takak2166/mattermost-grok-relay/internal/config"
 )
 
-// PostHandler is invoked for posts that pass the mention/DM filter.
+// PostHandler is invoked for posts that pass the channel-type filter (DM, group, or
+// explicit @mention in O/P) and the configured sender allowlist.
 // Downstream relay steps (webhook forwarding) are out of scope for this package.
 type PostHandler func(ctx context.Context, botID string, post *model.Post)
 

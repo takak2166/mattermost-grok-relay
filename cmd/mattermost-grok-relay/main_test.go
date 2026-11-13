@@ -126,7 +126,7 @@ func relayLookup() func(string) (string, bool) {
 		case "RELAY_MATTERMOST_URL":
 			return "https://fake.example.invalid", true
 		case "RELAY_ALLOWED_USER_IDS":
-			return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", true
+			return "7yjx8ntqhzn8zxmnc5k37wqg84", true
 		case "RELAY_TEST_TOKEN":
 			return "test-token-value", true
 		case "RELAY_TEST_WEBHOOK_URL":
@@ -138,6 +138,13 @@ func relayLookup() func(string) (string, bool) {
 }
 
 func TestRunMissingAllowedUserIDs(t *testing.T) {
+	old := startRelay
+	t.Cleanup(func() { startRelay = old })
+	startRelay = func(context.Context, string, config.Config, config.AllowedUserSet) error {
+		t.Fatal("startRelay must not run when RELAY_ALLOWED_USER_IDS is missing")
+		return nil
+	}
+
 	var stdout, stderr bytes.Buffer
 	lookup := func(key string) (string, bool) {
 		switch key {
@@ -161,6 +168,46 @@ func TestRunMissingAllowedUserIDs(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "RELAY_ALLOWED_USER_IDS") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunPassesAllowedUserSetToRelay(t *testing.T) {
+	const wantID = "7yjx8ntqhzn8zxmnc5k37wqg84"
+
+	old := startRelay
+	t.Cleanup(func() { startRelay = old })
+	var captured config.AllowedUserSet
+	startRelay = func(_ context.Context, _ string, _ config.Config, allowed config.AllowedUserSet) error {
+		captured = allowed
+		return nil
+	}
+
+	lookup := func(key string) (string, bool) {
+		switch key {
+		case "RELAY_MATTERMOST_URL":
+			return "https://fake.example.invalid", true
+		case "RELAY_ALLOWED_USER_IDS":
+			return wantID, true
+		case "RELAY_TEST_TOKEN":
+			return "test-token-value", true
+		case "RELAY_TEST_WEBHOOK_URL":
+			return "https://grok.example.invalid/hook/test", true
+		default:
+			return "", false
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"mattermost-grok-relay", "-config", "testdata/minimal.json"},
+		&stdout, &stderr,
+		lookup,
+	)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !captured.Contains(wantID) {
+		t.Fatalf("startRelay allowed set missing %q", wantID)
 	}
 }
 
