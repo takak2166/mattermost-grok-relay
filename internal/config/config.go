@@ -15,6 +15,7 @@ type Bot struct {
 	ID         string
 	WebhookURL WebhookURL
 	Token      Secret
+	WebhookKey Secret
 }
 
 // Config holds relay configuration loaded from file or environment.
@@ -32,6 +33,8 @@ type rawBot struct {
 	URLFile   string `json:"url_file"`
 	TokenEnv  string `json:"token_env"`
 	TokenFile string `json:"token_file"`
+	KeyEnv    string `json:"key_env"`
+	KeyFile   string `json:"key_file"`
 }
 
 // LoadOptions selects where configuration and secrets are read from.
@@ -176,10 +179,28 @@ func resolveBot(entry rawBot, index int, seen map[string]struct{}, opts LoadOpti
 		return Bot{}, fmt.Errorf("%s: token is empty", prefix)
 	}
 
+	keyEnv := strings.TrimSpace(entry.KeyEnv)
+	keyFile := strings.TrimSpace(entry.KeyFile)
+	switch {
+	case keyEnv == "" && keyFile == "":
+		return Bot{}, fmt.Errorf("%s: key_env or key_file is required", prefix)
+	case keyEnv != "" && keyFile != "":
+		return Bot{}, fmt.Errorf("%s: specify only one of key_env or key_file", prefix)
+	}
+
+	webhookKey, err := loadEnvOrFile(keyEnv, keyFile, opts, "key")
+	if err != nil {
+		return Bot{}, fmt.Errorf("%s: %w", prefix, err)
+	}
+	if webhookKey == "" {
+		return Bot{}, fmt.Errorf("%s: key value is empty", prefix)
+	}
+
 	return Bot{
 		ID:         id,
 		WebhookURL: newWebhookURL(webhook),
 		Token:      newSecret(token),
+		WebhookKey: newSecret(webhookKey),
 	}, nil
 }
 

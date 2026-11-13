@@ -3,7 +3,8 @@
     {
       "id": "test-bot",
       "url_env": "RELAY_TEST_WEBHOOK_URL",
-      "token_env": "RELAY_TEST_TOKEN"
+      "token_env": "RELAY_TEST_TOKEN",
+      "key_env": "RELAY_TEST_WEBHOOK_KEY"
     }
   ]
 }

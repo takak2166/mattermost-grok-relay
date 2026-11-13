@@ -70,6 +70,8 @@ func TestRun(t *testing.T) {
 					return "test-token-value", true
 				case "RELAY_TEST_WEBHOOK_URL":
 					return "https://grok.example.invalid/hook/test", true
+				case "RELAY_TEST_WEBHOOK_KEY":
+					return "test-webhook-key-value", true
 				default:
 					return "", false
 				}
@@ -94,7 +96,7 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunWithRelayConfigJSONEnv(t *testing.T) {
-	t.Setenv("RELAY_CONFIG_JSON", `{"bots":[{"id":"env-bot","url_env":"RELAY_TEST_WEBHOOK_URL","token_env":"RELAY_TEST_TOKEN"}]}`)
+	t.Setenv("RELAY_CONFIG_JSON", `{"bots":[{"id":"env-bot","url_env":"RELAY_TEST_WEBHOOK_URL","token_env":"RELAY_TEST_TOKEN","key_env":"RELAY_TEST_WEBHOOK_KEY"}]}`)
 
 	var stdout, stderr bytes.Buffer
 	lookup := func(key string) (string, bool) {
@@ -103,6 +105,8 @@ func TestRunWithRelayConfigJSONEnv(t *testing.T) {
 			return "test-token-value", true
 		case "RELAY_TEST_WEBHOOK_URL":
 			return "https://grok.example.invalid/hook/test", true
+		case "RELAY_TEST_WEBHOOK_KEY":
+			return "test-webhook-key-value", true
 		default:
 			return os.LookupEnv(key)
 		}
@@ -131,6 +135,8 @@ func relayLookup() func(string) (string, bool) {
 			return "test-token-value", true
 		case "RELAY_TEST_WEBHOOK_URL":
 			return "https://grok.example.invalid/hook/test", true
+		case "RELAY_TEST_WEBHOOK_KEY":
+			return "test-webhook-key-value", true
 		default:
 			return "", false
 		}
@@ -154,6 +160,8 @@ func TestRunMissingAllowedUserIDs(t *testing.T) {
 			return "test-token-value", true
 		case "RELAY_TEST_WEBHOOK_URL":
 			return "https://grok.example.invalid/hook/test", true
+		case "RELAY_TEST_WEBHOOK_KEY":
+			return "test-webhook-key-value", true
 		default:
 			return "", false
 		}
@@ -192,6 +200,8 @@ func TestRunPassesAllowedUserSetToRelay(t *testing.T) {
 			return "test-token-value", true
 		case "RELAY_TEST_WEBHOOK_URL":
 			return "https://grok.example.invalid/hook/test", true
+		case "RELAY_TEST_WEBHOOK_KEY":
+			return "test-webhook-key-value", true
 		default:
 			return "", false
 		}

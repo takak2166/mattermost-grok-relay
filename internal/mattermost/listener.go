@@ -13,8 +13,7 @@ import (
 
 // PostHandler is invoked for posts that pass the channel-type filter (DM, group, or
 // explicit @mention in O/P) and the configured sender allowlist.
-// Downstream relay steps (webhook forwarding) are out of scope for this package.
-type PostHandler func(ctx context.Context, botID string, post *model.Post)
+type PostHandler func(ctx context.Context, botID string, post *model.Post, senderName string)
 
 // BotListener maintains one WebSocket connection for a single bot user.
 type BotListener struct {
@@ -140,6 +139,6 @@ func (l *BotListener) handleEvent(ctx context.Context, event *model.WebSocketEve
 		return
 	}
 	if l.OnPost != nil {
-		l.OnPost(ctx, l.BotID, post)
+		l.OnPost(ctx, l.BotID, post, senderUsernameFromEvent(event))
 	}
 }
