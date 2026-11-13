@@ -14,7 +14,17 @@ import (
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"github.com/takak2166/mattermost-grok-relay/internal/config"
 )
+
+func testAllowedUserIDs(ids ...string) config.AllowedUserSet {
+	set := make(config.AllowedUserSet, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set
+}
 
 type mockWS struct {
 	events chan *model.WebSocketEvent
@@ -80,6 +90,7 @@ func TestBotListenerReconnectBackoff(t *testing.T) {
 		OnPost: func(_ context.Context, botID string, post *model.Post) {
 			accepted <- post.Id
 		},
+		AllowedSenders: testAllowedUserIDs("user-2"),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -197,6 +208,7 @@ func TestBotListenerRefreshesIdentityBeforeEachConnect(t *testing.T) {
 			default:
 			}
 		},
+		AllowedSenders: testAllowedUserIDs("user-2"),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -378,5 +390,106 @@ func TestBotListenerLogsInvalidPostedEventWithoutPayload(t *testing.T) {
 	}
 	if !strings.Contains(out, failClassPostedEventInvalid) {
 		t.Fatalf("expected fail_class in log: %s", out)
+	}
+}
+
+func TestBotListenerDeniedSenderLogsWithoutOnPost(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	called := make(chan struct{}, 1)
+
+	post := makePostedEvent(string(model.ChannelTypeDirect), nil, "intruder-1")
+	post.Add("sender_name", "@someone")
+	postData, _ := post.GetData()["post"].(string)
+	var p model.Post
+	_ = json.Unmarshal([]byte(postData), &p)
+	p.ChannelId = "ch-deny-1"
+	p.Message = "secret-free body"
+	raw, _ := json.Marshal(&p)
+	post.Add("post", string(raw))
+
+	l := &BotListener{
+		BotID:          "bot-1",
+		Logger:         logger,
+		Identity:       BotIdentity{UserID: "bot-1", Username: "relaybot"},
+		AllowedSenders: testAllowedUserIDs("allowed-user-1"),
+		OnPost: func(context.Context, string, *model.Post) {
+			called <- struct{}{}
+		},
+	}
+	l.handleEvent(context.Background(), post)
+
+	select {
+	case <-called:
+		t.Fatal("OnPost must not run for disallowed sender")
+	default:
+	}
+
+	out := buf.String()
+	for _, want := range []string{
+		logMsgRelaySenderNotAllowed,
+		failClassSenderNotAllowed,
+		`"level":"INFO"`,
+		`"sender_user_id":"intruder-1"`,
+		`"sender_name":"@someone"`,
+		`"channel_type":"D"`,
+		`"channel_id":"ch-deny-1"`,
+		`"post_id":"p1"`,
+		`"message_prefix":"secret-free body"`,
+		`"bot_id":"bot-1"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("log missing %q: %s", want, out)
+		}
+	}
+	if strings.Count(out, logMsgRelaySenderNotAllowed) != 1 {
+		t.Fatalf("expected exactly one deny log, got: %s", out)
+	}
+}
+
+func TestBotListenerNilAllowedSendersDeniesOnPost(t *testing.T) {
+	t.Parallel()
+	called := make(chan struct{}, 1)
+	post := makePostedEvent(string(model.ChannelTypeDirect), nil, "user-x")
+
+	l := &BotListener{
+		BotID:    "bot-1",
+		Identity: BotIdentity{UserID: "bot-1", Username: "relaybot"},
+		OnPost: func(context.Context, string, *model.Post) {
+			called <- struct{}{}
+		},
+	}
+	l.handleEvent(context.Background(), post)
+
+	select {
+	case <-called:
+		t.Fatal("OnPost must not run when AllowedSenders is unset")
+	default:
+	}
+}
+
+func TestBotListenerAllowedSenderInvokesOnPost(t *testing.T) {
+	t.Parallel()
+	called := make(chan string, 1)
+	post := makePostedEvent(string(model.ChannelTypeDirect), nil, "allowed-user-1")
+
+	l := &BotListener{
+		BotID:          "bot-1",
+		Identity:       BotIdentity{UserID: "bot-1", Username: "relaybot"},
+		AllowedSenders: testAllowedUserIDs("allowed-user-1"),
+		OnPost: func(_ context.Context, _ string, p *model.Post) {
+			called <- p.Id
+		},
+	}
+	l.handleEvent(context.Background(), post)
+
+	select {
+	case id := <-called:
+		if id != "p1" {
+			t.Fatalf("post id = %q", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for OnPost")
 	}
 }

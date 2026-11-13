@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"github.com/takak2166/mattermost-grok-relay/internal/config"
 )
 
-// PostHandler is invoked for posts that pass the mention/DM filter.
+// PostHandler is invoked for posts that pass the channel-type filter (DM, group, or
+// explicit @mention in O/P) and the configured sender allowlist.
 // Downstream relay steps (webhook forwarding) are out of scope for this package.
 type PostHandler func(ctx context.Context, botID string, post *model.Post)
 
@@ -21,12 +24,13 @@ type BotListener struct {
 	WsOrigin string
 	Token    string
 
-	Dial      DialWebSocket
-	ResolveID ResolveIdentity
-	Backoff   Backoff
-	OnPost    PostHandler
-	Logger    *slog.Logger
-	Now       func() time.Time
+	Dial           DialWebSocket
+	ResolveID      ResolveIdentity
+	Backoff        Backoff
+	OnPost         PostHandler
+	AllowedSenders config.AllowedUserSet
+	Logger         *slog.Logger
+	Now            func() time.Time
 }
 
 func (l *BotListener) Run(ctx context.Context) error {
@@ -120,6 +124,19 @@ func (l *BotListener) handleEvent(ctx context.Context, event *model.WebSocketEve
 		l.Logger.Debug("mattermost posted event has malformed mentions field", "bot_id", l.BotID, "channel_type", channelType)
 	}
 	if !ShouldRelayPost(l.Identity.UserID, l.Identity.Username, channelType, post, mentionIDs) {
+		return
+	}
+	if !l.AllowedSenders.Contains(post.UserId) {
+		logRelaySenderNotAllowed(
+			l.Logger,
+			l.BotID,
+			channelType,
+			post.UserId,
+			senderUsernameFromEvent(event),
+			post.ChannelId,
+			post.Id,
+			post.Message,
+		)
 		return
 	}
 	if l.OnPost != nil {

@@ -14,14 +14,15 @@ import (
 )
 
 // Run loads websocket listeners for all bots and blocks until shutdown.
-func Run(ctx context.Context, siteURL string, cfg config.Config) error {
+func Run(ctx context.Context, siteURL string, cfg config.Config, allowed config.AllowedUserSet) error {
 	logger := slog.Default()
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	hub := &mattermost.Hub{
-		SiteURL: siteURL,
-		Bots:    cfg.Bots,
+		SiteURL:        siteURL,
+		Bots:           cfg.Bots,
+		AllowedSenders: allowed,
 		OnPost: func(ctx context.Context, botID string, post *model.Post) {
 			logger.Debug("accepted post", "bot_id", botID, "post_id", post.Id, "channel_id", post.ChannelId)
 		},

@@ -12,13 +12,14 @@ type botListenerRunFunc func(context.Context, *BotListener) error
 
 // Hub starts one websocket listener per configured bot.
 type Hub struct {
-	SiteURL   string
-	WsOrigin  string
-	Bots      []config.Bot
-	Dial      DialWebSocket
-	OnPost    PostHandler
-	Logger    *slog.Logger
-	ResolveID ResolveIdentity
+	SiteURL        string
+	WsOrigin       string
+	Bots           []config.Bot
+	Dial           DialWebSocket
+	OnPost         PostHandler
+	AllowedSenders config.AllowedUserSet
+	Logger         *slog.Logger
+	ResolveID      ResolveIdentity
 
 	// runListener is used in tests to inject listener exit behavior.
 	runListener botListenerRunFunc
@@ -46,14 +47,15 @@ func (h *Hub) Run(ctx context.Context) error {
 		go func(bot config.Bot) {
 			defer wg.Done()
 			listener := &BotListener{
-				BotID:     bot.ID,
-				SiteURL:   h.SiteURL,
-				WsOrigin:  wsOrigin,
-				Token:     bot.Token.Value(),
-				Dial:      h.Dial,
-				ResolveID: h.ResolveID,
-				OnPost:    h.OnPost,
-				Logger:    h.Logger,
+				BotID:          bot.ID,
+				SiteURL:        h.SiteURL,
+				WsOrigin:       wsOrigin,
+				Token:          bot.Token.Value(),
+				Dial:           h.Dial,
+				ResolveID:      h.ResolveID,
+				OnPost:         h.OnPost,
+				AllowedSenders: h.AllowedSenders,
+				Logger:         h.Logger,
 			}
 			run := h.runListener
 			if run == nil {

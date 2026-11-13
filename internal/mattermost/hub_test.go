@@ -92,6 +92,30 @@ func TestHubRunLogsAbnormalListenerExit(t *testing.T) {
 	}
 }
 
+func TestHubPassesAllowedSendersToListener(t *testing.T) {
+	t.Parallel()
+	const allowedID = "7yjx8ntqhzn8zxmnc5k37wqg84"
+	allowed := config.AllowedUserSet{allowedID: {}}
+
+	var captured config.AllowedUserSet
+	h := &Hub{
+		SiteURL:        "https://fake.example.invalid",
+		Bots:           []config.Bot{{ID: "bot-1"}},
+		AllowedSenders: allowed,
+		runListener: func(ctx context.Context, l *BotListener) error {
+			captured = l.AllowedSenders
+			return ctx.Err()
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = h.Run(ctx)
+
+	if !captured.Contains(allowedID) {
+		t.Fatalf("listener AllowedSenders missing %q", allowedID)
+	}
+}
+
 func TestHubReturnsAllListenersStoppedWhenCtxAlive(t *testing.T) {
 	t.Parallel()
 	h := &Hub{
